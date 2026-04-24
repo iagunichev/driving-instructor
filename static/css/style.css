@@ -43,7 +43,7 @@
   --r-xl:  36px;
 
   /* Контейнер */
-  --container: 1280px;
+  --container: 1200px;
   --side-pad:  16px;
 
   /* Анимации */
@@ -2081,106 +2081,160 @@ body { padding-top: 72px !important; }
 
 .week-day-empty { font-size: 12px; color: var(--text-subtle); margin: 0; }
 
-/* ── 23. Адаптивность ── */
+/* ══════════════════════════════════════════════════════════
+   23. Адаптивность — мобильная версия
+   Принципы: единая сетка 16px, один столбец, чёткая типографика
+   ══════════════════════════════════════════════════════════ */
 @media (max-width: 767px) {
   :root { --side-pad: 16px; }
-  html { overflow-y: auto !important; }
-  body { overflow-y: auto !important; }
+  html { overflow-x: hidden; }
+  body { overflow-x: hidden; }
 
-  /* Секции */
-  .section { padding: 56px 0; }
-  .section-header { margin-bottom: 28px; }
-  .section-header h2 { font-size: clamp(20px, 5.5vw, 26px); }
+  /* ── Типографика ─────────────────────────────────────── */
+  h1 { font-size: 26px; line-height: 1.15; letter-spacing: -0.02em; }
+  h2 { font-size: 22px; line-height: 1.2;  letter-spacing: -0.02em; }
+  h3 { font-size: 15px; line-height: 1.4;  font-weight: 700; }
 
-  /* Hero */
-  .hero { padding: 72px 0 48px; }
+  .eyebrow       { font-size: 11px; margin-bottom: 10px; }
+  .accent-quote  { font-size: 15px; line-height: 1.55; margin: 0 0 20px; }
+  .lead-text     { font-size: 14px; line-height: 1.7; margin-bottom: 20px; max-width: none; }
+  .final-phrase  { font-size: 14px; line-height: 1.7; margin-top: 20px; max-width: none; }
 
-  .hero-description { font-size: 15px; margin-bottom: 28px; }
+  /* ── Секции ─────────────────────────────────────────── */
+  .section        { padding: 48px 0; }
+  .section-header { margin-bottom: 24px; }
+  .section-header h2 { font-size: 22px; }
+  .section-header .lead-text { font-size: 14px; }
 
-  .hero-actions { gap: 10px; }
-  .hero-actions .btn { width: 100%; justify-content: center; }
+  /* ── Сетки ──────────────────────────────────────────── */
+  .grid-2, .grid-3, .services-grid, .reviews-grid { gap: 12px; }
+
+  /* ── Кнопки ─────────────────────────────────────────── */
+  .btn    { font-size: 14px; padding: 12px 18px; min-height: 46px; }
+  .btn-lg { font-size: 15px; padding: 13px 20px; min-height: 50px; }
+  .btn-xl { font-size: 15px; padding: 14px 20px; min-height: 50px; }
+  .btn-sm { font-size: 13px; padding: 8px 14px;  min-height: 36px; }
+
+  /* ── Hero ───────────────────────────────────────────── */
+  .hero { padding: 60px 0 40px; }
+
+  .hero-description {
+    font-size: 14px;
+    line-height: 1.7;
+    margin-bottom: 24px;
+    max-width: none;
+  }
+
+  .hero-actions          { gap: 10px; margin-bottom: 24px; }
+  .hero-actions .btn     { width: 100%; justify-content: center; }
 
   .hero-stats {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 0;
     width: 100%;
-    padding: 16px 0;
+    padding: 14px 0;
     text-align: center;
+    gap: 0;
   }
-  .hero-stats .stat-item { padding: 0 8px; }
+  .hero-stats .stat-item  { padding: 0 6px; }
   .hero-stats .stat-divider { display: none; }
-  .stat-num { font-size: 22px; }
+  .stat-num   { font-size: 20px; }
+  .stat-label { font-size: 11px; }
 
-  .section-header .lead-text { font-size: 14px; }
-
-  /* Cards */
-  .card { padding: 20px; }
-  .card-icon { font-size: 24px; }
+  /* ── Карточки ───────────────────────────────────────── */
+  .card {
+    padding: 18px;
+    border-radius: 16px;
+  }
+  .card-icon { font-size: 22px; }
   .card:has(> .card-icon) {
-    grid-template-columns: 36px 1fr;
+    grid-template-columns: 32px 1fr;
     column-gap: 10px;
+    row-gap: 4px;
   }
+  .card:has(> .card-icon) h3 { font-size: 15px; }
+  .card p { font-size: 14px; line-height: 1.65; }
 
-  /* Services */
+  /* ── Услуги ─────────────────────────────────────────── */
   .service-card {
-    grid-template-columns: 36px 1fr;
+    grid-template-columns: 32px 1fr;
     column-gap: 10px;
-    padding: 20px;
+    padding: 18px;
+    border-radius: 16px;
   }
-  .service-emoji { font-size: 24px; }
-  .service-footer { flex-direction: column; align-items: flex-start; }
+  .service-emoji        { font-size: 22px; }
+  .service-card h3      { font-size: 15px; }
+  .service-card p       { font-size: 13px; }
+  .service-price        { font-size: 13px; }
+  .service-footer       { flex-direction: column; align-items: flex-start; gap: 10px; padding-top: 10px; margin-top: 6px; }
   .service-footer .btn-service { width: 100%; justify-content: center; }
 
-  /* CTA */
-  .cta-card { padding: 28px 20px; gap: 28px; }
-  .cta-action { align-items: stretch; }
-  .cta-action-label { font-size: 16px; }
-  .cta-note { text-align: left; }
+  /* ── О себе ─────────────────────────────────────────── */
+  .about-photo-wrap img { max-height: 280px; }
+  .about-tagline        { font-size: 15px; margin-bottom: 12px; }
+  .about-quote          { padding: 14px 16px; font-size: 14px; margin: 14px 0 20px; }
 
-  /* Forms & cards */
+  /* ── Отзывы ─────────────────────────────────────────── */
+  .review-card           { gap: 12px; }
+  .review-card blockquote { font-size: 14px; line-height: 1.65; }
+  .review-author         { font-size: 13px; }
+  .avatar                { width: 44px; height: 44px; font-size: 15px; }
+
+  /* ── FAQ ────────────────────────────────────────────── */
+  .faq-question { font-size: 15px; padding: 14px 16px; }
+  .faq-answer   { padding: 0 16px; }
+
+  /* ── CTA ────────────────────────────────────────────── */
+  .cta-card           { padding: 24px 18px; gap: 24px; }
+  .cta-action         { align-items: stretch; }
+  .cta-action-label   { font-size: 15px; }
+  .cta-note           { text-align: left; font-size: 12px; }
+  .cta-contacts-list  { gap: 8px; margin-top: 16px; }
+  .cta-contact-link   { font-size: 14px; }
+
+  /* ── Footer ─────────────────────────────────────────── */
+  .footer { padding: 40px 0 24px; }
+
+  /* ── Формы / авторизация ──────────────────────────── */
   .booking-form-card { position: static; }
-  .success-card { padding: 32px 24px; }
-  .login-card { padding: 32px 24px; }
+  .success-card { padding: 28px 18px; }
+  .login-card   { padding: 28px 18px; }
 
-  /* About */
-  .about-photo-wrap img { max-height: 320px; }
-  .about-quote { padding: 16px 18px; font-size: 14px; }
-
-  /* Reviews */
-  .review-card blockquote { font-size: 14px; }
-
-  /* FAQ */
-  .faq-question { font-size: 15px; padding: 16px 18px; }
-
-  /* Float button */
+  /* ── Плавающая кнопка ─────────────────────────────── */
   .float-call span { display: none; }
   .float-call { padding: 12px; border-radius: 50%; }
 
-  /* Dashboard */
+  /* ── Dashboard ────────────────────────────────────── */
   .dash-layout { grid-template-columns: 1fr; }
   .bookings-table th:nth-child(4),
   .bookings-table td:nth-child(4) { display: none; }
 }
 
-/* Очень маленькие телефоны */
-@media (max-width: 400px) {
+/* ── Очень маленькие телефоны (≤ 390px) ──────────────── */
+@media (max-width: 390px) {
   :root { --side-pad: 14px; }
-  .card { padding: 16px; }
-  .service-card { padding: 16px; }
-  .cta-card { padding: 20px 16px; }
-  .hero-stats { grid-template-columns: repeat(3, 1fr); }
-  .stat-num { font-size: 20px; }
+  h1 { font-size: 24px; }
+  h2 { font-size: 20px; }
+  .hero { padding: 56px 0 36px; }
+  .stat-num { font-size: 18px; }
+  .stat-label { font-size: 10px; }
+  .card { padding: 14px; border-radius: 14px; }
+  .service-card { padding: 14px; border-radius: 14px; }
+  .cta-card { padding: 18px 14px; }
+  .section { padding: 40px 0; }
+  .section-header { margin-bottom: 20px; }
 }
 
 @media (min-width: 576px) {
-  :root { --side-pad: 24px; }
-  .grid-2 { grid-template-columns: 1fr 1fr; }
+  :root { --side-pad: 20px; }
 }
 
+/* На планшетах и широких телефонах — 2 колонки */
 @media (min-width: 640px) {
+  :root { --side-pad: 24px; }
+  .grid-2        { grid-template-columns: 1fr 1fr; }
   .services-grid { grid-template-columns: 1fr 1fr; }
-  .reviews-grid { grid-template-columns: 1fr 1fr; }
+  .reviews-grid  { grid-template-columns: 1fr 1fr; }
 }
 
 @media (min-width: 768px) {
