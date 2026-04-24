@@ -11,6 +11,7 @@ from django.contrib.auth import login, logout
 from django.views.decorators.cache import never_cache
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone as tz
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.http import JsonResponse, HttpResponse
@@ -457,11 +458,41 @@ def owner_logout(request):
     return redirect("/")
 
 
+# ─── Авто-завершение прошедших записей ───────────────────────────────────────
+
+def _auto_complete_past_bookings() -> int:
+    """
+    Автоматически переводит активные записи в статус 'завершено',
+    если время слота уже прошло. Вызывается при открытии дашборда.
+    """
+    now       = tz.now()
+    today     = now.date()
+    cur_time  = now.time()
+
+    bookings = list(
+        Booking.objects.filter(
+            status=Booking.STATUS_ACTIVE,
+            slot__isnull=False,
+        ).filter(
+            Q(slot__date__lt=today) |
+            Q(slot__date=today, slot__end_time__lte=cur_time)
+        ).select_related("slot")
+    )
+
+    for booking in bookings:
+        booking.cache_slot_info()
+        booking.status = Booking.STATUS_COMPLETED
+        booking.save(update_fields=["status", "slot_date", "slot_time_str"])
+
+    return len(bookings)
+
+
 # ─── Личный кабинет: главная ─────────────────────────────────────────────────
 
 @login_required
 def dashboard(request):
     """Главная страница кабинета: 14-дневный сеточный календарь."""
+    _auto_complete_past_bookings()
     today = date.today()
     days_ahead = 30  # Синхронизировано с горизонтом клиента
     schedule_dates = [today + timedelta(days=i) for i in range(days_ahead)]
@@ -654,6 +685,8 @@ def toggle_slot(request, slot_id):
     slot = get_object_or_404(TimeSlot, pk=slot_id)
     if slot.is_booked:
         return JsonResponse({"success": False, "error": "Нельзя закрыть занятый слот."}, status=400)
+    if slot.is_past:
+        return JsonResponse({"success": False, "error": "Прошедший слот нельзя изменить."}, status=400)
     slot.is_available = not slot.is_available
     slot.save(update_fields=["is_available"])
     return JsonResponse({"success": True, "is_available": slot.is_available})

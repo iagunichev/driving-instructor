@@ -174,6 +174,23 @@ LOGIN_URL          = "/login/"
 LOGIN_REDIRECT_URL = "/dashboard/"
 LOGOUT_REDIRECT_URL = "/"
 
+# ── Email (SMTP через Яндекс) ─────────────────────────────────────────────────
+# Для работы нужен ПАРОЛЬ ПРИЛОЖЕНИЯ из Яндекс.Почты (не пароль аккаунта).
+# Получить: mail.yandex.ru → Настройки → Безопасность → Пароли приложений → Почта
+EMAIL_BACKEND       = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST          = config("EMAIL_HOST",          default="smtp.yandex.ru")
+EMAIL_PORT          = config("EMAIL_PORT",          default=465, cast=int)
+EMAIL_USE_SSL       = config("EMAIL_USE_SSL",       default=True,  cast=bool)
+EMAIL_USE_TLS       = config("EMAIL_USE_TLS",       default=False, cast=bool)
+EMAIL_HOST_USER     = config("EMAIL_HOST_USER",     default="")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
+OWNER_EMAIL         = config("OWNER_EMAIL",         default="")
+DEFAULT_FROM_EMAIL  = config("EMAIL_HOST_USER",     default="")
+
+# Если пароль не задан — письма в консоль (только при DEBUG=True)
+if DEBUG and not EMAIL_HOST_PASSWORD:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
 # ── Telegram Bot (опционально) ────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
 TELEGRAM_CHAT_ID   = config("TELEGRAM_CHAT_ID",   default="")
