@@ -9,6 +9,7 @@ from datetime import date, time, timedelta
 
 from django.contrib.auth import login, logout
 from django.views.decorators.cache import never_cache
+from django.db import transaction
 from django.db.models import Q
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
@@ -167,67 +168,71 @@ def create_booking(request):
     AJAX: создать запись.
     Принимает JSON или form-data.
     """
-    if request.content_type and "application/json" in request.content_type:
+    try:
+        if request.content_type and "application/json" in request.content_type:
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError:
+                return JsonResponse({"success": False, "error": "Некорректный JSON"}, status=400)
+        else:
+            data = request.POST
+
+        form = BookingForm(data)
+
+        if not form.is_valid():
+            first_error = next(iter(form.errors.values()))[0]
+            return JsonResponse({"success": False, "error": first_error}, status=400)
+
+        cd = form.cleaned_data
+
+        with transaction.atomic():
+            try:
+                slot = TimeSlot.objects.select_for_update().get(
+                    pk=cd["slot_id"], is_available=True,
+                )
+            except TimeSlot.DoesNotExist:
+                return JsonResponse(
+                    {"success": False, "error": "Слот больше недоступен. Выберите другое время."},
+                    status=409,
+                )
+
+            if slot.is_booked:
+                return JsonResponse(
+                    {"success": False, "error": "Этот слот уже занят. Выберите другое время."},
+                    status=409,
+                )
+
+            booking = Booking.objects.create(
+                slot=slot,
+                name=cd["name"],
+                phone=cd["phone"],
+                comment=cd.get("comment", ""),
+                service="",
+                slot_date=slot.date,
+                slot_time_str=slot.get_time_range(),
+            )
+
+        request.session["last_booking"] = {
+            "name": booking.name,
+            "phone": booking.phone,
+            "date": slot.date.strftime("%d.%m.%Y"),
+            "time": slot.get_time_range(),
+            "comment": booking.comment,
+        }
+
         try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({"success": False, "error": "Некорректный JSON"}, status=400)
-    else:
-        data = request.POST
+            notify_client_action(booking, "created")
+        except Exception:
+            pass
 
-    form = BookingForm(data)
+        return JsonResponse({
+            "success": True,
+            "redirect": "/booking/success/",
+            "message": "Запись успешно создана!",
+        })
 
-    if not form.is_valid():
-        first_error = next(iter(form.errors.values()))[0]
-        return JsonResponse({"success": False, "error": first_error}, status=400)
-
-    cd = form.cleaned_data
-
-    try:
-        slot = TimeSlot.objects.select_for_update().get(
-            pk=cd["slot_id"], is_available=True,
-        )
-    except TimeSlot.DoesNotExist:
-        return JsonResponse(
-            {"success": False, "error": "Слот больше недоступен. Выберите другое время."},
-            status=409,
-        )
-
-    if slot.is_booked:
-        return JsonResponse(
-            {"success": False, "error": "Этот слот уже занят. Выберите другое время."},
-            status=409,
-        )
-
-    booking = Booking.objects.create(
-        slot=slot,
-        name=cd["name"],
-        phone=cd["phone"],
-        comment=cd.get("comment", ""),
-        service="",
-        slot_date=slot.date,
-        slot_time_str=slot.get_time_range(),
-    )
-
-    request.session["last_booking"] = {
-        "name": booking.name,
-        "phone": booking.phone,
-        "date": slot.date.strftime("%d.%m.%Y"),
-        "time": slot.get_time_range(),
-        "comment": booking.comment,
-    }
-
-    # Уведомляем владельца — только клиентское действие
-    try:
-        notify_client_action(booking, "created")
-    except Exception:
-        pass  # Уведомление не критично для операции
-
-    return JsonResponse({
-        "success": True,
-        "redirect": "/booking/success/",
-        "message": "Запись успешно создана!",
-    })
+    except Exception as exc:
+        return JsonResponse({"success": False, "error": str(exc)}, status=500)
 
 
 # ─── Самообслуживание клиента ─────────────────────────────────────────────────
