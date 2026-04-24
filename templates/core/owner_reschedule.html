@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}
+  {% if booking.status == 'cancelled' %}Восстановить запись{% else %}Перенести запись{% endif %} — Личный кабинет
+{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+  <div class="container">
+
+    <div class="dash-header">
+      <div>
+        <a href="{% url 'all_bookings' %}" class="back-link" style="display:inline-flex;margin-bottom:8px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          Все записи
+        </a>
+        <h1 class="dash-title">
+          {% if booking.status == 'cancelled' %}Восстановить запись{% else %}Перенести запись{% endif %}
+        </h1>
+        <p class="dash-subtitle">
+          {{ booking.name }} · {{ booking.phone }}
+          {% if booking.get_display_date %} · текущая дата: {{ booking.get_display_date|date:"d.m.Y" }} {{ booking.get_display_time }}{% endif %}
+        </p>
+      </div>
+    </div>
+
+    {% if messages %}
+    <div class="dash-messages" style="margin-bottom:16px;">
+      {% for msg in messages %}
+        <div class="dash-alert dash-alert-{{ msg.tags }}">{{ msg }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Форма выбора нового слота — использует тот же calendar UI что и бронирование -->
+    <div class="booking-layout" style="grid-template-columns: 1fr;">
+      <div class="booking-calendar-wrap reveal" style="--delay:0s;">
+        <form method="post" id="reschedule-form">
+          {% csrf_token %}
+          <input type="hidden" id="slot-id-input" name="slot_id" value="">
+
+          <!-- Заголовок и выбранный слот -->
+          <div class="cal-header">
+            <p class="cal-title">Выберите новую дату и время</p>
+            <p id="selected-slot-display" class="selected-slot" style="margin-top:8px;">Слот не выбран</p>
+          </div>
+
+          <!-- Навигация по месяцам -->
+          <div class="cal-nav">
+            <button type="button" id="prev-month" class="cal-nav-btn" aria-label="Предыдущий месяц">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <span id="cal-month-label" class="cal-month-label"></span>
+            <button type="button" id="next-month" class="cal-nav-btn" aria-label="Следующий месяц">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+
+          <!-- Сетка календаря -->
+          <div id="cal-grid" class="cal-grid" role="grid" aria-label="Выбор даты"></div>
+
+          <!-- Слоты времени -->
+          <div class="time-slots-wrap" id="time-slots-wrap" aria-live="polite">
+            <div class="time-slots-placeholder">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <p>Выберите дату</p>
+            </div>
+          </div>
+
+          <div style="margin-top:24px;">
+            <button type="submit" id="submit-btn" class="btn btn-primary w-full" disabled>
+              {% if booking.status == 'cancelled' %}Восстановить на выбранное время{% else %}Перенести на выбранное время{% endif %}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  // Reuse BookingCalendar in reschedule mode — не отправляет AJAX, просто submit формы
+  if (window.BookingCalendar) {
+    new BookingCalendar({ isReschedule: true });
+  }
+});
+</script>
+{% endblock %}

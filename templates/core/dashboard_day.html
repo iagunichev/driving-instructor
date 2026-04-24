@@ -1,0 +1,556 @@
+{% extends "base.html" %}
+{% load static core_filters %}
+
+{% block title %}{{ selected_date|date:"d E Y" }} — Расписание{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+  <div class="container">
+
+    <!-- Навигация по дням -->
+    <div class="day-page-header">
+      <a href="{% url 'dashboard' %}" class="back-link">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Расписание
+      </a>
+      <div class="day-page-nav">
+        <a href="{% url 'dashboard_day' prev_date %}" class="cal-nav-btn" title="Предыдущий день">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </a>
+        <h1 class="day-page-title">
+          {{ selected_date|date:"l, d E Y" }}
+          {% if selected_date == today %}<span class="today-badge">Сегодня</span>{% endif %}
+          {% if is_past %}<span class="past-badge">Прошёл</span>{% endif %}
+        </h1>
+        <a href="{% url 'dashboard_day' next_date %}" class="cal-nav-btn" title="Следующий день">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- Flash-уведомления -->
+    <div id="day-flash" style="display:none;" class="day-flash"></div>
+    {% if messages %}
+    <div class="dash-messages">
+      {% for message in messages %}
+        <div class="dash-alert dash-alert-{{ message.tags }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Сетка слотов -->
+    <div class="day-slots-grid" id="day-slots-grid">
+      {% for item in slot_data %}
+      <div
+        class="day-slot-card {% if item.slot %}{% if item.slot.is_booked %}day-slot--booked{% elif not item.slot.is_available %}day-slot--closed{% else %}day-slot--free{% endif %}{% else %}day-slot--empty{% endif %}"
+        id="slot-card-{{ item.value }}"
+        data-value="{{ item.value }}"
+      >
+        <!-- Время -->
+        <div class="day-slot__time">{{ item.time_range }}</div>
+
+        <!-- Статус и информация о клиенте -->
+        <div class="day-slot__status" id="slot-status-{{ item.value }}">
+          {% if item.slot %}
+            {% if item.slot.is_booked %}
+              <span class="slot-status-badge booked">● Занято</span>
+              <div class="slot-booking-info">
+                <span class="slot-client-name">{{ item.slot.booking.name }}</span>
+                <a href="tel:{{ item.slot.booking.phone }}" class="slot-client-phone">{{ item.slot.booking.phone }}</a>
+                {% if item.slot.booking.comment %}
+                <p class="slot-client-comment">{{ item.slot.booking.comment|truncatechars:80 }}</p>
+                {% endif %}
+              </div>
+            {% elif not item.slot.is_available %}
+              <span class="slot-status-badge closed">✕ Закрыт</span>
+            {% else %}
+              <span class="slot-status-badge free">✓ Свободен</span>
+            {% endif %}
+          {% else %}
+            <span class="slot-status-badge empty">– Не добавлен</span>
+          {% endif %}
+        </div>
+
+        <!-- Кнопки действий -->
+        <div class="day-slot__actions" id="slot-actions-{{ item.value }}">
+          {% if not is_past %}
+            {% if item.slot %}
+              {% if item.slot.is_booked %}
+                <button class="btn btn-sm btn-danger cancel-booking-btn"
+                        data-booking="{{ item.slot.booking.pk }}"
+                        data-slot="{{ item.slot.pk }}"
+                        data-card="{{ item.value }}"
+                        data-time="{{ item.time_range }}">
+                  Отменить
+                </button>
+              {% else %}
+                <!-- Переключить открыто/закрыто -->
+                <button
+                  class="toggle-btn {% if item.slot.is_available %}toggle-btn--open{% else %}toggle-btn--closed{% endif %}"
+                  data-slot="{{ item.slot.pk }}"
+                  data-card="{{ item.value }}"
+                >
+                  {% if item.slot.is_available %}
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                    Закрыть
+                  {% else %}
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/></svg>
+                    Открыть
+                  {% endif %}
+                </button>
+                <!-- Создать запись вручную -->
+                {% if item.slot.is_available %}
+                <button
+                  class="btn btn-sm btn-accent manual-book-btn"
+                  data-slot="{{ item.slot.pk }}"
+                  data-card="{{ item.value }}"
+                  title="Записать клиента вручную"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Записать
+                </button>
+                {% endif %}
+                <!-- Удалить слот -->
+                <button class="btn btn-sm btn-ghost delete-slot-btn"
+                        data-slot="{{ item.slot.pk }}"
+                        data-card="{{ item.value }}"
+                        title="Удалить слот">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+                </button>
+              {% endif %}
+            {% else %}
+              <!-- Слот не создан: добавить -->
+              <button
+                class="btn btn-sm btn-accent add-slot-btn"
+                data-date="{{ selected_date|date:'Y-m-d' }}"
+                data-value="{{ item.value }}"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Добавить
+              </button>
+            {% endif %}
+          {% endif %}
+        </div>
+
+        <!-- Встроенная форма ручной записи (скрыта по умолчанию) -->
+        {% if item.slot and item.slot.is_available and not item.slot.is_booked and not is_past %}
+        <div class="manual-form-wrap" id="manual-form-{{ item.value }}" style="display:none;">
+          <div class="manual-form">
+            <h4 class="manual-form__title">Новая запись · {{ item.time_range }}</h4>
+            <div class="form-group">
+              <input type="text" class="form-input mf-name" placeholder="Имя клиента" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <input type="tel" class="form-input phone-mask mf-phone" placeholder="+7 (___) ___-__-__" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <textarea class="form-textarea mf-comment" rows="2" placeholder="Что хочет отработать..."></textarea>
+            </div>
+            <div class="manual-form__actions">
+              <button
+                class="btn btn-primary btn-sm mf-submit"
+                data-slot="{{ item.slot.pk }}"
+                data-card="{{ item.value }}"
+              >
+                Сохранить запись
+              </button>
+              <button class="btn btn-outline btn-sm mf-cancel" data-card="{{ item.value }}">
+                Отмена
+              </button>
+            </div>
+            <div class="mf-error" id="mf-error-{{ item.value }}" style="display:none;"></div>
+          </div>
+        </div>
+        {% endif %}
+
+      </div><!-- /day-slot-card -->
+      {% endfor %}
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  'use strict';
+
+  /* ── CSRF ── */
+  const csrf = document.cookie.match(/csrftoken=([^;]+)/)?.[1]
+             || document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
+  /* ── Flash-уведомление ── */
+  function flash(msg, type = 'success') {
+    const el = document.getElementById('day-flash');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = `day-flash day-flash--${type}`;
+    el.style.display = 'block';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.opacity = '0'; setTimeout(() => { el.style.display = 'none'; el.style.opacity = '1'; }, 400); }, 3000);
+  }
+
+  /* ── POST хелпер ── */
+  async function post(url, body = {}) {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(body)) fd.append(k, v);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrf },
+      body: fd,
+    });
+    return res.json();
+  }
+
+  /* ── Добавить слот (AJAX, без reload) ── */
+  document.querySelectorAll('.add-slot-btn').forEach(btn => {
+    btn.addEventListener('click', async function () {
+      btn.disabled = true;
+      btn.textContent = '...';
+      const date  = this.dataset.date;
+      const value = this.dataset.value;
+      try {
+        const data = await post(`/dashboard/day/${date}/add-slot/`, { time_range: value });
+        if (data.success) {
+          // Обновляем карточку: она теперь "свободна"
+          const card = document.getElementById(`slot-card-${value}`);
+          if (card) {
+            card.className = card.className.replace('day-slot--empty', 'day-slot--free');
+            document.getElementById(`slot-status-${value}`).innerHTML =
+              `<span class="slot-status-badge free">✓ Свободен</span>`;
+            // Заменяем кнопки на набор управления (toggle + записать + удалить)
+            document.getElementById(`slot-actions-${value}`).innerHTML = `
+              <button class="toggle-btn toggle-btn--open" data-slot="${data.slot_id}" data-card="${value}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                Закрыть
+              </button>
+              <button class="btn btn-sm btn-accent manual-book-btn" data-slot="${data.slot_id}" data-card="${value}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Записать
+              </button>
+              <button class="btn btn-sm btn-ghost delete-slot-btn" data-slot="${data.slot_id}" data-card="${value}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+              </button>
+            `;
+            // Добавляем форму ручной записи
+            injectManualForm(card, value, data.slot_id, data.time_range);
+            rebindSlotButtons(card);
+          }
+          flash('Слот добавлен');
+        } else {
+          flash(data.error || 'Ошибка', 'error');
+          btn.disabled = false;
+          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Добавить';
+        }
+      } catch (e) { flash('Ошибка сети', 'error'); btn.disabled = false; }
+    });
+  });
+
+  /* ── Переключить доступность слота ── */
+  function bindToggle(btn) {
+    btn.addEventListener('click', async function () {
+      const slotId = this.dataset.slot;
+      const card   = this.dataset.card;
+      try {
+        const data = await post(`/dashboard/toggle-slot/${slotId}/`);
+        if (data.success) {
+          const cardEl = document.getElementById(`slot-card-${card}`);
+          if (data.is_available) {
+            this.className = 'toggle-btn toggle-btn--open';
+            this.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg> Закрыть`;
+            document.getElementById(`slot-status-${card}`).innerHTML = `<span class="slot-status-badge free">✓ Свободен</span>`;
+            cardEl?.classList.replace('day-slot--closed', 'day-slot--free');
+            // Показываем кнопку "Записать" если скрыта
+            const manualBtn = cardEl?.querySelector('.manual-book-btn');
+            if (manualBtn) manualBtn.style.display = '';
+          } else {
+            this.className = 'toggle-btn toggle-btn--closed';
+            this.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/></svg> Открыть`;
+            document.getElementById(`slot-status-${card}`).innerHTML = `<span class="slot-status-badge closed">✕ Закрыт</span>`;
+            cardEl?.classList.replace('day-slot--free', 'day-slot--closed');
+            // Скрываем "Записать" — закрытый слот нельзя занять
+            const manualBtn = cardEl?.querySelector('.manual-book-btn');
+            if (manualBtn) manualBtn.style.display = 'none';
+          }
+          flash(data.is_available ? 'Слот открыт' : 'Слот закрыт');
+        } else {
+          flash(data.error || 'Ошибка', 'error');
+        }
+      } catch (e) { flash('Ошибка сети', 'error'); }
+    });
+  }
+
+  /* ── Удалить слот ── */
+  function bindDelete(btn) {
+    btn.addEventListener('click', async function () {
+      if (!confirm('Удалить этот слот?')) return;
+      const slotId = this.dataset.slot;
+      const card   = this.dataset.card;
+      try {
+        const data = await post(`/dashboard/delete-slot/${slotId}/`);
+        if (data.success) {
+          const cardEl = document.getElementById(`slot-card-${card}`);
+          if (cardEl) {
+            // Сбрасываем карточку до "не добавлен"
+            cardEl.className = cardEl.className.replace(/day-slot--(free|closed|booked)/, 'day-slot--empty');
+            document.getElementById(`slot-status-${card}`).innerHTML =
+              `<span class="slot-status-badge empty">– Не добавлен</span>`;
+            document.getElementById(`slot-actions-${card}`).innerHTML = `
+              <button class="btn btn-sm btn-accent add-slot-btn"
+                      data-date="${document.querySelector('[data-date]')?.dataset.date || location.pathname.split('/').slice(-2,-1)[0]}"
+                      data-value="${card}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Добавить
+              </button>`;
+            // Убираем форму ручной записи
+            const form = document.getElementById(`manual-form-${card}`);
+            if (form) form.remove();
+            rebindSlotButtons(cardEl);
+          }
+          flash('Слот удалён');
+        } else {
+          flash(data.error || 'Ошибка', 'error');
+        }
+      } catch (e) { flash('Ошибка сети', 'error'); }
+    });
+  }
+
+  /* ── Показать форму ручной записи ── */
+  function bindManualBook(btn) {
+    btn.addEventListener('click', function () {
+      const card = this.dataset.card;
+      const form = document.getElementById(`manual-form-${card}`);
+      if (!form) return;
+      // Закрываем все другие открытые формы
+      document.querySelectorAll('.manual-form-wrap').forEach(f => {
+        if (f.id !== `manual-form-${card}`) f.style.display = 'none';
+      });
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+      if (form.style.display === 'block') {
+        form.querySelector('.mf-name')?.focus();
+      }
+    });
+  }
+
+  /* ── Отмена формы ── */
+  function bindManualCancel(btn) {
+    btn.addEventListener('click', function () {
+      const card = this.dataset.card;
+      const form = document.getElementById(`manual-form-${card}`);
+      if (form) form.style.display = 'none';
+    });
+  }
+
+  /* ── Сохранить ручную запись ── */
+  function bindManualSubmit(btn) {
+    btn.addEventListener('click', async function () {
+      const slotId = this.dataset.slot;
+      const card   = this.dataset.card;
+      const wrap   = document.getElementById(`manual-form-${card}`);
+      const name   = wrap?.querySelector('.mf-name')?.value.trim();
+      const phone  = wrap?.querySelector('.mf-phone')?.value.trim();
+      const comment = wrap?.querySelector('.mf-comment')?.value.trim() || '';
+      const errEl  = document.getElementById(`mf-error-${card}`);
+
+      if (!name)  { showMfError(errEl, 'Введите имя'); return; }
+      if (!phone || phone.replace(/\D/g,'').length < 11) {
+        showMfError(errEl, 'Введите корректный телефон'); return;
+      }
+
+      btn.disabled = true; btn.textContent = 'Сохраняем...';
+      if (errEl) errEl.style.display = 'none';
+
+      try {
+        const data = await post(`/dashboard/manual-booking/${slotId}/`, { name, phone, comment });
+        if (data.success) {
+          // Обновляем карточку → занято
+          const cardEl = document.getElementById(`slot-card-${card}`);
+          if (cardEl) {
+            cardEl.className = cardEl.className.replace(/day-slot--(free|empty|closed)/, 'day-slot--booked');
+            document.getElementById(`slot-status-${card}`).innerHTML = `
+              <span class="slot-status-badge booked">● Занято</span>
+              <div class="slot-booking-info">
+                <span class="slot-client-name">${data.name}</span>
+                <a href="tel:${data.phone}" class="slot-client-phone">${data.phone}</a>
+                ${data.comment ? `<p class="slot-client-comment">${data.comment}</p>` : ''}
+              </div>`;
+            document.getElementById(`slot-actions-${card}`).innerHTML = `
+              <button class="btn btn-sm btn-danger cancel-booking-btn"
+                      data-booking="${data.booking_id}" data-card="${card}">
+                Отменить
+              </button>`;
+            wrap.style.display = 'none';
+            rebindSlotButtons(cardEl);
+          }
+          flash(`Запись для ${data.name} создана!`);
+        } else {
+          showMfError(errEl, data.error || 'Ошибка при сохранении');
+        }
+      } catch (e) {
+        showMfError(errEl, 'Ошибка сети');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Сохранить запись';
+      }
+    });
+  }
+
+  /* ── Отменить запись (из страницы дня) — без reload ── */
+  function bindCancelBooking(btn) {
+    btn.addEventListener('click', async function () {
+      if (!confirm('Отменить запись клиента?')) return;
+      const bookingId = this.dataset.booking;
+      const slotId    = this.dataset.slot;
+      const card      = this.dataset.card;
+      const timeRange = this.dataset.time || card.replace('-', '–');
+
+      try {
+        const data = await post(`/dashboard/cancel-booking/${bookingId}/`);
+        if (data.success) {
+          const cardEl = document.getElementById(`slot-card-${card}`);
+          if (cardEl) {
+            // Возвращаем карточку в "свободно"
+            cardEl.className = cardEl.className
+              .replace(/day-slot--(booked|closed|empty)/, 'day-slot--free');
+
+            document.getElementById(`slot-status-${card}`).innerHTML =
+              `<span class="slot-status-badge free">✓ Свободен</span>`;
+
+            document.getElementById(`slot-actions-${card}`).innerHTML = `
+              <button class="toggle-btn toggle-btn--open"
+                      data-slot="${slotId}" data-card="${card}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2"/>
+                  <path d="M7 11V7a5 5 0 0110 0v4"/>
+                </svg>
+                Закрыть
+              </button>
+              <button class="btn btn-sm btn-accent manual-book-btn"
+                      data-slot="${slotId}" data-card="${card}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Записать
+              </button>
+              <button class="btn btn-sm btn-ghost delete-slot-btn"
+                      data-slot="${slotId}" data-card="${card}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                </svg>
+              </button>`;
+
+            // Убираем старую форму ручной записи и инжектируем новую
+            const oldForm = document.getElementById(`manual-form-${card}`);
+            if (oldForm) oldForm.remove();
+            injectManualForm(cardEl, card, slotId, timeRange);
+            rebindSlotButtons(cardEl);
+          }
+          flash('Запись отменена');
+        } else {
+          flash(data.error || 'Ошибка', 'error');
+        }
+      } catch (e) { flash('Ошибка сети', 'error'); }
+    });
+  }
+
+  function showMfError(el, msg) {
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  /* ── Инъекция формы ручной записи в новую карточку ── */
+  function injectManualForm(cardEl, cardValue, slotId, timeRange) {
+    const existing = document.getElementById(`manual-form-${cardValue}`);
+    if (existing) return;
+
+    const div = document.createElement('div');
+    div.className = 'manual-form-wrap';
+    div.id = `manual-form-${cardValue}`;
+    div.style.display = 'none';
+    div.innerHTML = `
+      <div class="manual-form">
+        <h4 class="manual-form__title">Новая запись · ${timeRange}</h4>
+        <div class="form-group">
+          <input type="text" class="form-input mf-name" placeholder="Имя клиента" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <input type="tel" class="form-input phone-mask mf-phone" placeholder="+7 (___) ___-__-__" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <textarea class="form-textarea mf-comment" rows="2" placeholder="Что хочет отработать..."></textarea>
+        </div>
+        <div class="manual-form__actions">
+          <button class="btn btn-primary btn-sm mf-submit" data-slot="${slotId}" data-card="${cardValue}">
+            Сохранить запись
+          </button>
+          <button class="btn btn-outline btn-sm mf-cancel" data-card="${cardValue}">Отмена</button>
+        </div>
+        <div class="mf-error" id="mf-error-${cardValue}" style="display:none;"></div>
+      </div>`;
+    cardEl.appendChild(div);
+  }
+
+  /* ── Привязываем все кнопки (включая динамически вставленные) ── */
+  function rebindSlotButtons(scope = document) {
+    scope.querySelectorAll('.toggle-btn:not([data-bound])').forEach(b => { b.dataset.bound = 1; bindToggle(b); });
+    scope.querySelectorAll('.delete-slot-btn:not([data-bound])').forEach(b => { b.dataset.bound = 1; bindDelete(b); });
+    scope.querySelectorAll('.manual-book-btn:not([data-bound])').forEach(b => { b.dataset.bound = 1; bindManualBook(b); });
+    scope.querySelectorAll('.mf-cancel:not([data-bound])').forEach(b => { b.dataset.bound = 1; bindManualCancel(b); });
+    scope.querySelectorAll('.mf-submit:not([data-bound])').forEach(b => { b.dataset.bound = 1; bindManualSubmit(b); });
+    scope.querySelectorAll('.cancel-booking-btn:not([data-bound])').forEach(b => { b.dataset.bound = 1; bindCancelBooking(b); });
+    scope.querySelectorAll('.add-slot-btn:not([data-bound])').forEach(b => { b.dataset.bound = 1; bindAddSlot(b); });
+    // Маска телефона для новых инпутов
+    scope.querySelectorAll('.phone-mask:not([data-bound])').forEach(inp => {
+      inp.dataset.bound = 1;
+      if (typeof setupPhoneMask !== 'undefined') setupPhoneMask(inp);
+    });
+  }
+
+  function bindAddSlot(btn) {
+    btn.addEventListener('click', async function () {
+      btn.disabled = true; btn.textContent = '...';
+      const d = this.dataset.date
+              || location.pathname.split('/').filter(Boolean).slice(-1)[0];
+      const value = this.dataset.value;
+      try {
+        const data = await post(`/dashboard/day/${d}/add-slot/`, { time_range: value });
+        if (data.success) {
+          const card = document.getElementById(`slot-card-${value}`);
+          if (card) {
+            card.className = card.className.replace('day-slot--empty', 'day-slot--free');
+            document.getElementById(`slot-status-${value}`).innerHTML =
+              `<span class="slot-status-badge free">✓ Свободен</span>`;
+            document.getElementById(`slot-actions-${value}`).innerHTML = `
+              <button class="toggle-btn toggle-btn--open" data-slot="${data.slot_id}" data-card="${value}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                Закрыть
+              </button>
+              <button class="btn btn-sm btn-accent manual-book-btn" data-slot="${data.slot_id}" data-card="${value}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Записать
+              </button>
+              <button class="btn btn-sm btn-ghost delete-slot-btn" data-slot="${data.slot_id}" data-card="${value}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+              </button>`;
+            injectManualForm(card, value, data.slot_id, data.time_range);
+            rebindSlotButtons(card);
+          }
+          flash('Слот добавлен');
+        } else {
+          flash(data.error || 'Ошибка', 'error');
+          btn.disabled = false;
+          btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Добавить`;
+        }
+      } catch (e) { flash('Ошибка сети', 'error'); btn.disabled = false; }
+    });
+  }
+
+  // Первоначальная привязка всех кнопок
+  rebindSlotButtons(document);
+
+})();
+</script>
+{% endblock %}
