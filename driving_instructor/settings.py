@@ -156,7 +156,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # ── Локализация ───────────────────────────────────────────────────────────────
 LANGUAGE_CODE = "ru-ru"
-TIME_ZONE     = "Europe/Moscow"
+TIME_ZONE     = "Europe/Samara"
 USE_I18N      = True
 USE_TZ        = True
 
