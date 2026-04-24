@@ -662,27 +662,27 @@ def cancel_booking(request, booking_id):
     Запись НЕ удаляется — статус меняется на 'cancelled'.
     Слот освобождается для повторной записи.
     """
-    booking = get_object_or_404(Booking, pk=booking_id)
-    name = booking.name
+    try:
+        booking = get_object_or_404(Booking, pk=booking_id)
+        name = booking.name
 
-    # Сохраняем дату/время в денормализованные поля перед обнулением слота
-    booking.cache_slot_info()
-    slot_str = f"{booking.slot_date.strftime('%d.%m.%Y')} {booking.slot_time_str}" if booking.slot_date else "—"
+        booking.cache_slot_info()
+        slot_str = f"{booking.slot_date.strftime('%d.%m.%Y')} {booking.slot_time_str}" if booking.slot_date else "—"
 
-    # Освобождаем слот (делаем доступным для повторной записи)
-    if booking.slot:
-        booking.slot.is_available = True
-        booking.slot.save(update_fields=["is_available"])
+        if booking.slot:
+            booking.slot.is_available = True
+            booking.slot.save(update_fields=["is_available"])
 
-    # Обнуляем FK и ставим статус cancelled
-    booking.slot   = None
-    booking.status = Booking.STATUS_CANCELLED
-    booking.save(update_fields=["slot", "status", "slot_date", "slot_time_str"])
+        booking.slot   = None
+        booking.status = Booking.STATUS_CANCELLED
+        booking.save(update_fields=["slot", "status", "slot_date", "slot_time_str"])
 
-    return JsonResponse({
-        "success": True,
-        "message": f"Запись {name} на {slot_str} отменена.",
-    })
+        return JsonResponse({
+            "success": True,
+            "message": f"Запись {name} на {slot_str} отменена.",
+        })
+    except Exception as exc:
+        return JsonResponse({"success": False, "error": str(exc)}, status=500)
 
 
 @login_required
@@ -731,31 +731,77 @@ def create_manual_booking(request, slot_id):
 @require_GET
 def booking_detail(request, booking_id):
     """AJAX: возвращает данные записи для модала."""
-    booking = get_object_or_404(Booking, pk=booking_id)
-    d = booking.get_display_date
-    return JsonResponse({
-        "id":         booking.pk,
-        "name":       booking.name,
-        "phone":      booking.phone,
-        "date":       d.strftime("%d.%m.%Y") if d else "—",
-        "date_long":  d.strftime("%d %B %Y") if d else "—",
-        "time":       booking.get_display_time,
-        "comment":    booking.comment,
-        "owner_note": booking.owner_note,
-        "status":     booking.status,
-        "is_past":    (d < date.today()) if d else True,
-    })
+    try:
+        booking = get_object_or_404(Booking, pk=booking_id)
+        d = booking.get_display_date
+        return JsonResponse({
+            "id":         booking.pk,
+            "name":       booking.name,
+            "phone":      booking.phone,
+            "date":       d.strftime("%d.%m.%Y") if d else "—",
+            "date_long":  d.strftime("%d %B %Y") if d else "—",
+            "time":       booking.get_display_time,
+            "comment":    booking.comment,
+            "owner_note": booking.owner_note,
+            "status":     booking.status,
+            "is_past":    (d < date.today()) if d else True,
+        })
+    except Exception as exc:
+        return JsonResponse({"success": False, "error": str(exc)}, status=500)
+
+
+@login_required
+@require_POST
+def booking_update(request, booking_id):
+    """AJAX: обновляет имя, телефон и заметку инструктора."""
+    try:
+        booking = get_object_or_404(Booking, pk=booking_id)
+        name  = request.POST.get("name",  "").strip()
+        phone = request.POST.get("phone", "").strip()
+        owner_note = request.POST.get("owner_note", "").strip()
+        if not name or not phone:
+            return JsonResponse({"success": False, "error": "Имя и телефон обязательны"}, status=400)
+        booking.name       = name
+        booking.phone      = phone
+        booking.owner_note = owner_note
+        booking.save(update_fields=["name", "phone", "owner_note"])
+        return JsonResponse({
+            "success":    True,
+            "name":       booking.name,
+            "phone":      booking.phone,
+            "owner_note": booking.owner_note,
+        })
+    except Exception as exc:
+        return JsonResponse({"success": False, "error": str(exc)}, status=500)
+
+
+@login_required
+@require_POST
+def booking_delete(request, booking_id):
+    """AJAX: полное удаление записи из БД (освобождает слот)."""
+    try:
+        booking = get_object_or_404(Booking, pk=booking_id)
+        if booking.slot:
+            booking.slot.is_available = True
+            booking.slot.save(update_fields=["is_available"])
+        booking.delete()
+        return JsonResponse({"success": True})
+    except Exception as exc:
+        return JsonResponse({"success": False, "error": str(exc)}, status=500)
 
 
 @login_required
 @require_POST
 def complete_booking(request, booking_id):
     """AJAX: помечает запись как завершённую."""
-    booking = get_object_or_404(Booking, pk=booking_id)
-    booking.cache_slot_info()
-    booking.status = Booking.STATUS_COMPLETED
-    booking.save(update_fields=["status", "slot_date", "slot_time_str"])
-    return JsonResponse({"success": True, "status": "completed"})
+    try:
+        booking = get_object_or_404(Booking, pk=booking_id)
+        booking.cache_slot_info()
+        booking.status = Booking.STATUS_COMPLETED
+        booking.save(update_fields=["status", "slot_date", "slot_time_str"])
+        return JsonResponse({"success": True, "status": "completed"})
+    except Exception as exc:
+        return JsonResponse({"success": False, "error": str(exc)}, status=500)
 
 
 @login_required

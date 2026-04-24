@@ -204,12 +204,12 @@
     <div class="modal-body">
       <div class="modal-client-row">
         <div class="modal-field">
-          <span class="modal-field-label">Клиент</span>
-          <span class="modal-field-value" id="modal-name"></span>
+          <label class="modal-field-label" for="modal-name-input">Клиент</label>
+          <input type="text" id="modal-name-input" class="form-input" placeholder="Имя клиента">
         </div>
         <div class="modal-field">
-          <span class="modal-field-label">Телефон</span>
-          <a class="modal-field-value modal-phone" id="modal-phone" href="#"></a>
+          <label class="modal-field-label" for="modal-phone-input">Телефон</label>
+          <input type="tel" id="modal-phone-input" class="form-input" placeholder="+7 (___) ___-__-__">
         </div>
       </div>
 
@@ -224,7 +224,7 @@
         <textarea
           id="modal-note-input"
           class="form-textarea"
-          rows="4"
+          rows="3"
           placeholder="Прогресс ученика, личные наблюдения, план следующего занятия..."
         ></textarea>
       </div>
@@ -232,7 +232,7 @@
 
     <!-- Кнопки -->
     <div class="modal-footer">
-      <button class="btn btn-primary" id="modal-save-btn">Сохранить заметку</button>
+      <button class="btn btn-primary" id="modal-save-btn">Сохранить изменения</button>
 
       <button class="btn btn-outline" id="modal-complete-btn" title="Отметить как завершённое">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -315,12 +315,9 @@ document.addEventListener('DOMContentLoaded', function () {
     currentBookingId = data.id;
     document.getElementById('modal-date').textContent = data.date;
     document.getElementById('modal-time').textContent = data.time;
-    document.getElementById('modal-name').textContent = data.name;
-    const phoneEl = document.getElementById('modal-phone');
-    phoneEl.textContent = data.phone;
-    phoneEl.href = `tel:${data.phone}`;
+    document.getElementById('modal-name-input').value  = data.name  || '';
+    document.getElementById('modal-phone-input').value = data.phone || '';
 
-    // Ссылка «Перенести» — ведёт на страницу выбора нового слота
     if (rescheduleLink) rescheduleLink.href = `/dashboard/owner-reschedule/${data.id}/`;
 
     const commentWrap = document.getElementById('modal-comment-wrap');
@@ -335,7 +332,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('modal-save-status').style.display = 'none';
     modal.classList.add('open');
     document.body.style.overflow = 'hidden';
-    document.getElementById('modal-note-input').focus();
+    document.getElementById('modal-name-input').focus();
   }
 
   function closeModal() {
@@ -349,40 +346,49 @@ document.addEventListener('DOMContentLoaded', function () {
   modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
-  /* ─── Сохранить заметку из модала ─── */
+  /* ─── Сохранить изменения из модала (имя, телефон, заметка) ─── */
   saveBtn?.addEventListener('click', async function () {
     if (!currentBookingId) return;
-    const note = document.getElementById('modal-note-input').value.trim();
+    const name  = document.getElementById('modal-name-input').value.trim();
+    const phone = document.getElementById('modal-phone-input').value.trim();
+    const note  = document.getElementById('modal-note-input').value.trim();
+    if (!name || !phone) { alert('Имя и телефон обязательны'); return; }
     saveBtn.disabled = true; saveBtn.textContent = 'Сохраняем...';
 
     try {
-      const fd = new FormData(); fd.append('note', note);
-      const res = await fetch(`/dashboard/owner-note/${currentBookingId}/`, {
+      const fd = new FormData();
+      fd.append('name', name);
+      fd.append('phone', phone);
+      fd.append('owner_note', note);
+      const res = await fetch(`/dashboard/booking/${currentBookingId}/update/`, {
         method: 'POST', headers: { 'X-CSRFToken': csrf }, body: fd,
       });
       const data = await res.json();
       if (data.success) {
-        // Обновляем data-атрибут в DOM
+        // Обновляем строку в списке
         const row = document.getElementById(`booking-row-${currentBookingId}`);
-        if (row) row.dataset.ownerNote = note;
-
-        // Показываем/скрываем бейдж заметки
-        const badge = row?.querySelector('.booking-item__note-badge');
-        if (note && !badge) {
-          row.querySelector('.booking-item__info')?.insertAdjacentHTML('beforeend',
-            `<p class="booking-item__note-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/></svg> Есть заметка</p>`);
-        } else if (!note && badge) {
-          badge.remove();
+        if (row) {
+          const nameEl  = row.querySelector('.booking-item__name');
+          const phoneEl = row.querySelector('.booking-item__phone');
+          if (nameEl)  nameEl.textContent  = data.name;
+          if (phoneEl) phoneEl.textContent = data.phone;
+          row.dataset.ownerNote = note;
+          const badge = row.querySelector('.booking-item__note-badge');
+          if (note && !badge) {
+            row.querySelector('.booking-item__info')?.insertAdjacentHTML('beforeend',
+              `<p class="booking-item__note-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/></svg> Есть заметка</p>`);
+          } else if (!note && badge) {
+            badge.remove();
+          }
         }
-
         const status = document.getElementById('modal-save-status');
         status.textContent = '✓ Сохранено';
         status.className = 'modal-save-status modal-save-status--ok';
         status.style.display = 'block';
         setTimeout(() => status.style.display = 'none', 2500);
-      } else { alert('Ошибка сохранения'); }
+      } else { alert(data.error || 'Ошибка сохранения'); }
     } catch(e) { alert('Ошибка сети'); }
-    finally { saveBtn.disabled = false; saveBtn.textContent = 'Сохранить заметку'; }
+    finally { saveBtn.disabled = false; saveBtn.textContent = 'Сохранить изменения'; }
   });
 
   /* ─── Отменить запись из модала ─── */

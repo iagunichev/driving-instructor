@@ -45,6 +45,8 @@ urlpatterns = [
     path("dashboard/manual-booking/<int:slot_id>/",      views.create_manual_booking, name="create_manual_booking"),
     path("dashboard/owner-note/<int:booking_id>/",       views.add_owner_note,        name="add_owner_note"),
     path("dashboard/booking/<int:booking_id>/",          views.booking_detail,        name="booking_detail"),
+    path("dashboard/booking/<int:booking_id>/update/",   views.booking_update,        name="booking_update"),
+    path("dashboard/booking/<int:booking_id>/delete/",   views.booking_delete,        name="booking_delete"),
 
     # ── История и все записи ──────────────────────────────────────
     path("dashboard/history/",                               views.booking_history,    name="booking_history"),

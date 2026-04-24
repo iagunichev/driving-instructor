@@ -174,6 +174,58 @@ document.addEventListener('DOMContentLoaded', function () {
       finally { this.disabled = false; this.textContent = 'Сохранить'; }
     });
   });
+  /* ─── Инлайн-редактирование данных клиента ─── */
+  document.querySelectorAll('.hist-edit-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      const id = this.dataset.booking;
+      const form = document.getElementById(`edit-form-${id}`);
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+      if (form.style.display === 'block') form.querySelector('input')?.focus();
+    });
+  });
+
+  document.querySelectorAll('.hist-edit-cancel-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      document.getElementById(`edit-form-${this.dataset.booking}`).style.display = 'none';
+    });
+  });
+
+  document.querySelectorAll('.hist-edit-save-btn').forEach(btn => {
+    btn.addEventListener('click', async function(e) {
+      e.stopPropagation();
+      const id    = this.dataset.booking;
+      const name  = document.querySelector(`.hist-edit-name[data-booking="${id}"]`)?.value.trim();
+      const phone = document.querySelector(`.hist-edit-phone[data-booking="${id}"]`)?.value.trim();
+      const note  = document.querySelector(`.hist-edit-note[data-booking="${id}"]`)?.value.trim() || '';
+      if (!name || !phone) { alert('Имя и телефон обязательны'); return; }
+      this.disabled = true; this.textContent = 'Сохраняем...';
+      try {
+        const fd = new FormData();
+        fd.append('name', name); fd.append('phone', phone); fd.append('owner_note', note);
+        const res = await fetch(`/dashboard/booking/${id}/update/`, {
+          method: 'POST', headers: { 'X-CSRFToken': csrf }, body: fd,
+        });
+        const data = await res.json();
+        if (data.success) {
+          const card = document.getElementById(`hist-${id}`);
+          if (card) {
+            const nameEl = card.querySelector('.history-name');
+            const phoneSmall = card.querySelector('.history-phone-small');
+            const phoneLink  = card.querySelector('.history-phone');
+            if (nameEl)      nameEl.textContent      = data.name;
+            if (phoneSmall)  phoneSmall.textContent  = data.phone;
+            if (phoneLink)   { phoneLink.textContent = data.phone; phoneLink.href = `tel:${data.phone}`; }
+          }
+          const st = document.getElementById(`edit-status-${id}`);
+          if (st) { st.textContent = '✓ Сохранено'; st.style.display = 'inline'; setTimeout(() => st.style.display = 'none', 2000); }
+          document.getElementById(`edit-form-${id}`).style.display = 'none';
+        } else { alert(data.error || 'Ошибка'); }
+      } catch { alert('Ошибка сети'); }
+      finally { this.disabled = false; this.textContent = 'Сохранить'; }
+    });
+  });
 });
 </script>
 {% endblock %}

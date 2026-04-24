@@ -57,7 +57,7 @@
       </p>
       <div class="history-list">
         {% for booking in active_bookings %}
-        {% include "core/_history_card.html" with booking=booking is_active=True %}
+        {% include "core/_history_card.html" with booking=booking is_active=True can_delete=True %}
         {% endfor %}
       </div>
     </div>
@@ -72,7 +72,7 @@
       </p>
       <div class="history-list">
         {% for booking in past_bookings %}
-        {% include "core/_history_card.html" with booking=booking is_active=False %}
+        {% include "core/_history_card.html" with booking=booking is_active=False can_delete=True %}
         {% endfor %}
       </div>
     </div>
@@ -205,6 +205,76 @@ document.addEventListener('DOMContentLoaded', function () {
         } else { alert('Ошибка сохранения'); }
       } catch(e) { alert('Ошибка сети'); }
       finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
+    });
+  });
+  /* ─── Инлайн-редактирование данных клиента ─── */
+  document.querySelectorAll('.hist-edit-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      const id = this.dataset.booking;
+      const form = document.getElementById(`edit-form-${id}`);
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+      if (form.style.display === 'block') form.querySelector('input')?.focus();
+    });
+  });
+
+  document.querySelectorAll('.hist-edit-cancel-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      document.getElementById(`edit-form-${this.dataset.booking}`).style.display = 'none';
+    });
+  });
+
+  document.querySelectorAll('.hist-edit-save-btn').forEach(btn => {
+    btn.addEventListener('click', async function(e) {
+      e.stopPropagation();
+      const id    = this.dataset.booking;
+      const name  = document.querySelector(`.hist-edit-name[data-booking="${id}"]`)?.value.trim();
+      const phone = document.querySelector(`.hist-edit-phone[data-booking="${id}"]`)?.value.trim();
+      const note  = document.querySelector(`.hist-edit-note[data-booking="${id}"]`)?.value.trim() || '';
+      if (!name || !phone) { alert('Имя и телефон обязательны'); return; }
+      this.disabled = true; this.textContent = 'Сохраняем...';
+      try {
+        const fd = new FormData();
+        fd.append('name', name); fd.append('phone', phone); fd.append('owner_note', note);
+        const res = await fetch(`/dashboard/booking/${id}/update/`, {
+          method: 'POST', headers: { 'X-CSRFToken': csrf }, body: fd,
+        });
+        const data = await res.json();
+        if (data.success) {
+          const card = document.getElementById(`hist-${id}`);
+          if (card) {
+            card.querySelector('.history-name')?.setText?.(data.name) || (card.querySelector('.history-name') && (card.querySelector('.history-name').textContent = data.name));
+            card.querySelector('.history-phone-small')?.textContent && (card.querySelector('.history-phone-small').textContent = data.phone);
+            card.querySelector('.history-detail-value')?.textContent && (card.querySelector('.history-detail-value').textContent = data.name);
+            const phoneLink = card.querySelector('.history-phone');
+            if (phoneLink) { phoneLink.textContent = data.phone; phoneLink.href = `tel:${data.phone}`; }
+          }
+          const st = document.getElementById(`edit-status-${id}`);
+          if (st) { st.textContent = '✓ Сохранено'; st.style.display = 'inline'; setTimeout(() => st.style.display = 'none', 2000); }
+          document.getElementById(`edit-form-${id}`).style.display = 'none';
+        } else { alert(data.error || 'Ошибка'); }
+      } catch { alert('Ошибка сети'); }
+      finally { this.disabled = false; this.textContent = 'Сохранить'; }
+    });
+  });
+
+  /* ─── Удаление записи ─── */
+  document.querySelectorAll('.hist-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async function(e) {
+      e.stopPropagation();
+      if (!confirm('Удалить запись навсегда? Это действие нельзя отменить.')) return;
+      const id = this.dataset.booking;
+      this.disabled = true;
+      try {
+        const res = await fetch(`/dashboard/booking/${id}/delete/`, {
+          method: 'POST', headers: { 'X-CSRFToken': csrf },
+        });
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById(`hist-${id}`)?.remove();
+        } else { alert(data.error || 'Ошибка'); this.disabled = false; }
+      } catch { alert('Ошибка сети'); this.disabled = false; }
     });
   });
 });

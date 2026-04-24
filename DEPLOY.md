@@ -114,39 +114,64 @@ GRANT ALL PRIVILEGES ON DATABASE driving_instructor TO drivinguser;
 
 ## ШАГ 5 — Загрузить проект на сервер
 
-Создай папку и скопируй файлы:
+### 5.1 — Получить GitHub Personal Access Token (нужен один раз)
+
+GitHub не принимает обычный пароль для push — нужен токен.
+
+1. Зайди на https://github.com/settings/tokens
+2. Нажми **Generate new token (classic)**
+3. Поставь галочку **repo** (полный доступ к репозиториям)
+4. Нажми **Generate token**
+5. **Скопируй токен сразу** — он показывается только один раз!
+   Выглядит примерно так: `ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxx`
+
+### 5.2 — Запушить проект на GitHub (со своего компьютера)
+
+Репозиторий уже создан и закоммичен. Выполни в терминале на своём компьютере:
+
+```bash
+cd /home/vi/IT/public_html/driving_instructor
+
+# Вставь свой токен вместо ТВОЙ_ТОКЕН:
+git remote set-url origin https://iagunichev:ТВОЙ_ТОКЕН@github.com/iagunichev/driving-instructor.git
+
+git push -u origin master
+```
+
+**Пример с реальным токеном:**
+```bash
+git remote set-url origin https://iagunichev:ghp_abc123xyz@github.com/iagunichev/driving-instructor.git
+git push -u origin master
+```
+
+> **Если ошибка `repository not found`** — репозиторий не создан на GitHub.
+> Создай его: https://github.com/new → Name: `driving-instructor` → Create repository
+> (без галочек README/gitignore — всё уже есть локально)
+>
+> **Если ошибка `master does not exist`** — ты ещё не делал коммит:
+> ```bash
+> git add .
+> git commit -m "initial deploy"
+> git push -u origin master
+> ```
+
+### 5.3 — Скачать проект на сервер (на VPS)
 
 ```bash
 mkdir -p /home/django/site
-```
-
-**Вариант А — через Git (рекомендую):**
-
-Сначала на своём компьютере сделай репозиторий (если ещё нет):
-```bash
-cd /home/vi/IT/public_html/driving_instructor
-git init
-git add .
-git commit -m "initial deploy"
-# Создай репозиторий на GitHub и:
-git remote add origin https://github.com/ТВО_ИМЯ/driving-instructor.git
-git push -u origin main
-```
-
-Затем на сервере:
-```bash
 cd /home/django/site
-git clone https://github.com/ТВО_ИМЯ/driving-instructor.git .
+
+# Клонируй (токен нужен снова, чтобы сервер мог скачать приватный репозиторий):
+git clone https://iagunichev:ТВОЙ_ТОКЕН@github.com/iagunichev/driving-instructor.git .
 ```
 
-**Вариант Б — через SCP (загрузить папку напрямую):**
-
-На своём компьютере в терминале:
-```bash
-scp -r /home/vi/IT/public_html/driving_instructor/ django@IP_VPS:/home/django/site/
-```
-
-> **Если SCP просит пароль** — введи пароль пользователя `django`
+> Точка в конце команды обязательна — клонирует в текущую папку.
+>
+> **Если ошибка `destination path already exists`:**
+> ```bash
+> rm -rf /home/django/site/*
+> git clone https://iagunichev:ТВОЙ_ТОКЕН@github.com/iagunichev/driving-instructor.git .
+> ```
 
 ---
 
