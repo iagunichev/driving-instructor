@@ -68,7 +68,10 @@ def _notify_via_smtp(booking, action: str) -> bool:
     smtp_pass   = getattr(settings, "EMAIL_HOST_PASSWORD", "")
 
     if not owner_email or not smtp_user or not smtp_pass:
-        logger.debug("SMTP не настроен — используем PHP")
+        logger.warning(
+            "SMTP не настроен (user=%r pass_set=%s owner=%r) — используем PHP",
+            smtp_user, bool(smtp_pass), owner_email,
+        )
         return False
 
     cfg  = _ACTION_CFG.get(action, _DEFAULT_CFG)

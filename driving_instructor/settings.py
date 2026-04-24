@@ -224,3 +224,27 @@ if not DEBUG:
         default="https://ivan-gunichev.ru,https://www.ivan-gunichev.ru",
         cast=Csv(),
     )
+
+# ── Логирование (вывод в stderr → systemd/journald) ───────────────────────────
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {"format": "%(levelname)s %(name)s: %(message)s"},
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "WARNING",
+    },
+    "loggers": {
+        # Наши логи — INFO и выше видны в journalctl
+        "core": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "django": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+    },
+}
