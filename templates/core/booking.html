@@ -180,7 +180,7 @@
 
 {% block extra_scripts %}
 <script>
-  // Запускаем календарь записи
+  // Запускаем бесшовный календарь записи (всегда 6 недель)
   document.addEventListener('DOMContentLoaded', function() {
     if (typeof BookingCalendar !== 'undefined') {
       new BookingCalendar();

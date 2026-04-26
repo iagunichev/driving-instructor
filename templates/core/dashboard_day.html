@@ -52,7 +52,7 @@
 
       {% for slot in slots %}
       {% with card=slot.start_time|time:"H:i" %}
-      <div class="slot-row slot-row--{% if slot.is_booked %}booked{% elif not slot.is_available and slot.is_manually_closed %}closed{% elif not slot.is_available %}blocked{% else %}free{% endif %}"
+      <div class="slot-row slot-row--{% if slot.is_booked and slot.booking.status == 'completed' %}completed{% elif slot.is_booked %}booked{% elif not slot.is_available and slot.is_manually_closed %}closed{% elif not slot.is_available %}blocked{% else %}free{% endif %}"
            id="slot-card-{{ card }}"
            data-start-time="{{ card }}">
 
@@ -60,7 +60,11 @@
 
         <div class="slot-row__meta" id="slot-status-{{ card }}">
           {% if slot.is_booked %}
-            <span class="slot-badge slot-badge--booked">Занято</span>
+            {% if slot.booking.status == 'completed' %}
+              <span class="slot-badge slot-badge--completed">Завершено</span>
+            {% else %}
+              <span class="slot-badge slot-badge--booked">Занято</span>
+            {% endif %}
             <span class="slot-client-name">{{ slot.booking.name }}</span>
             <a href="tel:{{ slot.booking.phone }}" class="slot-client-phone">{{ slot.booking.phone }}</a>
             {% if slot.booking.comment %}<span class="slot-client-note">{{ slot.booking.comment|truncatechars:55 }}</span>{% endif %}
@@ -76,15 +80,17 @@
         <div class="slot-row__actions" id="slot-actions-{{ card }}">
           {% if not is_past %}
             {% if slot.is_booked %}
-              <button class="slot-act slot-act--cancel cancel-booking-btn"
-                      data-booking="{{ slot.booking.pk }}"
-                      data-slot="{{ slot.pk }}"
-                      data-card="{{ card }}"
-                      data-time="{{ card }}"
-                      title="Отменить запись">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                Отменить
-              </button>
+              {% if slot.booking.status == 'active' %}
+                <button class="slot-act slot-act--cancel cancel-booking-btn"
+                        data-booking="{{ slot.booking.pk }}"
+                        data-slot="{{ slot.pk }}"
+                        data-card="{{ card }}"
+                        data-time="{{ card }}"
+                        title="Отменить запись">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  Отменить
+                </button>
+              {% endif %}
             {% else %}
               <button class="slot-act slot-act--toggle toggle-btn {% if slot.is_available %}toggle-btn--open{% else %}toggle-btn--closed{% endif %}"
                       data-slot="{{ slot.pk }}" data-card="{{ card }}">

@@ -99,13 +99,15 @@
               </div>
               <div class="day-card__slots">
                 {% if info.booked %}<span class="day-dot booked"></span>{% endif %}
+                {% if info.completed %}<span class="day-dot completed"></span>{% endif %}
                 {% if info.free   %}<span class="day-dot free"></span>{% endif %}
                 {% if info.closed %}<span class="day-dot closed"></span>{% endif %}
               </div>
               <div class="day-card__counts">
                 {% if info.free   %}<span class="count-badge free">{{ info.free }}</span>{% endif %}
                 {% if info.booked %}<span class="count-badge booked">{{ info.booked }}</span>{% endif %}
-                {% if not info.free and not info.booked and not info.closed %}
+                {% if info.completed %}<span class="count-badge completed">{{ info.completed }}</span>{% endif %}
+                {% if not info.free and not info.booked and not info.completed and not info.closed %}
                   <span class="count-badge empty">—</span>
                 {% endif %}
               </div>
@@ -117,6 +119,7 @@
           <div class="schedule-legend">
             <span><span class="day-dot free"></span> Свободно</span>
             <span><span class="day-dot booked"></span> Занято</span>
+            <span><span class="day-dot completed"></span> Завершено</span>
             <span><span class="day-dot closed"></span> Закрыто</span>
           </div>
         </div>

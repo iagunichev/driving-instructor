@@ -266,8 +266,6 @@ class BookingCalendar {
     this.isReschedule = opts.isReschedule || false;
     this.today    = new Date();
     this.today.setHours(0, 0, 0, 0);
-    this.curYear  = this.today.getFullYear();
-    this.curMonth = this.today.getMonth() + 1;
     this.availMap = {};
     this.selDate  = null;
     this.selSlot  = null;
@@ -288,8 +286,12 @@ class BookingCalendar {
     // Форма скрыта до выбора слота
     this._lockForm();
 
-    this._bindNav();
-    this._loadMonth();
+    // ВСЕГДА используем бесшовный режим (6 недель)
+    if (this.prevBtn) this.prevBtn.style.display = 'none';
+    if (this.nextBtn) this.nextBtn.style.display = 'none';
+    if (this.monthLabel) this.monthLabel.textContent = 'Ближайшие 6 недель';
+
+    this._loadSeamless();
     if (!this.isReschedule) this._bindForm();
     this._bindPhoneMask();
   }
@@ -333,96 +335,76 @@ class BookingCalendar {
     }, 450);
   }
 
-  _bindNav() {
-    this.prevBtn?.addEventListener('click', () => {
-      let m = this.curMonth - 1, y = this.curYear;
-      if (m < 1) { m = 12; y--; }
-      if (y < this.today.getFullYear() ||
-         (y === this.today.getFullYear() && m < this.today.getMonth() + 1)) return;
-      this.curYear = y; this.curMonth = m;
-      this._loadMonth();
-    });
-
-    this.nextBtn?.addEventListener('click', () => {
-      let m = this.curMonth + 1, y = this.curYear;
-      if (m > 12) { m = 1; y++; }
-      this.curYear = y; this.curMonth = m;
-      this._loadMonth();
-    });
-  }
-
-  async _loadMonth() {
+  async _loadSeamless() {
     this.calGrid.innerHTML = `
       <div class="cal-loading" style="grid-column:1/-1">
         <div class="cal-spinner"></div><span>Загрузка...</span>
       </div>`;
-    this._updateMonthLabel();
     try {
-      const r = await fetch(`/api/available-dates/?year=${this.curYear}&month=${this.curMonth}`);
+      const r = await fetch(`/api/available-dates/?weeks=6`);
       if (!r.ok) throw new Error();
       this.availMap = await r.json();
     } catch (_) { this.availMap = {}; }
-    this._renderGrid();
+    this._renderSeamlessGrid();
   }
 
-  _updateMonthLabel() {
-    if (this.monthLabel) {
-      this.monthLabel.textContent = `${CALENDAR_MONTHS[this.curMonth - 1]} ${this.curYear}`;
-    }
-  }
-
-  _renderGrid() {
-    const first = new Date(this.curYear, this.curMonth - 1, 1);
-    const last  = new Date(this.curYear, this.curMonth, 0);
-
-    let startDow = first.getDay() - 1;
-    if (startDow < 0) startDow = 6;
-
-    const cells = [];
-    const prevLast = new Date(this.curYear, this.curMonth - 1, 0);
-    for (let i = startDow - 1; i >= 0; i--)
-      cells.push({ day: prevLast.getDate() - i, type: 'other' });
-    for (let d = 1; d <= last.getDate(); d++)
-      cells.push({ day: d, type: 'current' });
-    let nd = 1;
-    while (cells.length % 7 !== 0)
-      cells.push({ day: nd++, type: 'other' });
-
+  _renderSeamlessGrid() {
+    // Рендерим 6 недель (42 дня) начиная с сегодня
     this.calGrid.innerHTML = '';
 
-    cells.forEach(cell => {
+    const startDate = new Date(this.today);
+    const endDate = new Date(this.today);
+    endDate.setDate(endDate.getDate() + 42);
+
+    // Находим начало недели (понедельник)
+    let currentDate = new Date(startDate);
+    let dayOfWeek = currentDate.getDay();
+    if (dayOfWeek === 0) dayOfWeek = 7; // Воскресенье = 7
+    currentDate.setDate(currentDate.getDate() - (dayOfWeek - 1));
+
+    // Рендерим 6 недель (42 дня)
+    for (let i = 0; i < 42; i++) {
       const el = document.createElement('button');
       el.type = 'button';
       el.className = 'cal-day';
-      el.textContent = cell.day;
+      el.textContent = currentDate.getDate();
       el.setAttribute('role', 'gridcell');
 
-      if (cell.type !== 'current') {
-        el.classList.add('other-month');
-        el.disabled = true;
-        this.calGrid.appendChild(el);
-        return;
-      }
+      const dateStr = this._fmt(currentDate);
+      const isPast = currentDate < this.today;
+      const isCurrentMonth = currentDate.getMonth() === this.today.getMonth();
 
-      const date    = new Date(this.curYear, this.curMonth - 1, cell.day);
-      const dateStr = this._fmt(date);
-      const isPast  = date < this.today;
-
+      // Прошедшие дни или дни до сегодня
       if (isPast) {
-        el.classList.add('past'); el.disabled = true;
-      } else if (this.availMap[dateStr]) {
+        el.classList.add('past');
+        el.disabled = true;
+      }
+      // Дни с доступными слотами
+      else if (this.availMap[dateStr]) {
         el.classList.add('has-slots');
-        el.setAttribute('aria-label', `${cell.day} — ${this.availMap[dateStr]} слот(ов)`);
-        el.addEventListener('click', () => this._selectDate(dateStr, cell.day, el));
-      } else {
-        el.classList.add('no-slots'); el.disabled = true;
+        el.setAttribute('aria-label', `${currentDate.getDate()} — ${this.availMap[dateStr]} слот(ов)`);
+        el.addEventListener('click', () => this._selectDate(dateStr, currentDate.getDate(), el));
+      }
+      // Дни без слотов
+      else {
+        el.classList.add('no-slots');
+        el.disabled = true;
       }
 
+      // Сегодня
       if (dateStr === this._fmt(this.today)) el.classList.add('today');
+
+      // Выбранная дата
       if (dateStr === this.selDate) el.classList.add('selected');
 
+      // Дни другого месяца (приглушаем)
+      if (!isCurrentMonth && currentDate < this.today) {
+        el.classList.add('other-month');
+      }
+
       this.calGrid.appendChild(el);
-    });
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
   }
 
   async _selectDate(dateStr, dayNum, clickedEl) {

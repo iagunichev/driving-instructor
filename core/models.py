@@ -52,12 +52,19 @@ class TimeSlot(models.Model):
 
     @property
     def is_past(self):
-        """Возвращает True, если слот уже прошёл."""
+        """
+        Возвращает True, если слот уже прошёл или до него осталось менее 15 минут.
+        Например: слот на 10:00 закрывается в 9:45.
+        """
+        from datetime import timedelta, datetime
         now = timezone.now()
-        slot_datetime = timezone.make_aware(
-            timezone.datetime.combine(self.date, self.start_time)
-        )
-        return slot_datetime < now
+
+        # Создаём naive datetime и делаем его aware
+        naive_dt = datetime.combine(self.date, self.start_time)
+        slot_datetime = timezone.make_aware(naive_dt)
+
+        # Закрываем слот за 15 минут до начала
+        return slot_datetime - timedelta(minutes=15) <= now
 
     @property
     def status_display(self):

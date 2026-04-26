@@ -23,6 +23,7 @@ urlpatterns = [
 
     # ── AJAX API: публичный календарь ─────────────────────────────
     path("api/available-dates/", views.available_dates, name="available_dates"),
+    path("api/schedule-summary/", views.schedule_summary, name="schedule_summary"),
     path("api/slots/",           views.slots_for_date,  name="slots_for_date"),
     path("api/book/",            views.create_booking,  name="create_booking"),
 

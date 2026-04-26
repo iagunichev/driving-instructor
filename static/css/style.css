@@ -1359,6 +1359,18 @@ body { padding-top: 72px !important; }
   min-height: 200px;
 }
 
+/* Компактный календарь для страницы переноса */
+.cal-grid--compact {
+  gap: 6px;
+  min-height: auto;
+}
+
+.cal-grid--compact .cal-day {
+  font-size: 13px;
+  min-height: 42px;
+  aspect-ratio: 1;
+}
+
 .cal-day {
   aspect-ratio: 1;
   display: grid;
@@ -1426,6 +1438,296 @@ body { padding-top: 72px !important; }
 .cal-day.selected::after { background: #070710; }
 
 .cal-day.no-slots { color: var(--text-subtle); }
+
+/* Мобильные стили для календаря записи */
+@media (max-width: 768px) {
+  .booking-layout {
+    gap: 24px;
+  }
+
+  .calendar-card {
+    padding: 16px;
+  }
+
+  .calendar-nav {
+    margin-bottom: 16px;
+  }
+
+  .cal-month-label {
+    font-size: 16px;
+  }
+
+  .cal-nav-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .cal-weekdays {
+    gap: 2px;
+    margin-bottom: 6px;
+  }
+
+  .cal-weekdays span {
+    font-size: 10px;
+    padding: 4px 0;
+  }
+
+  .cal-grid {
+    gap: 6px;
+  }
+
+  .cal-day {
+    font-size: 16px;
+    min-height: 48px;
+    border-width: 2px;
+  }
+
+  .cal-day.has-slots::after {
+    width: 5px;
+    height: 5px;
+    bottom: 5px;
+  }
+
+  .cal-legend {
+    gap: 12px;
+    font-size: 11px;
+  }
+
+  .time-slots-wrap {
+    padding: 16px;
+  }
+
+  .booking-form-card {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .booking-page {
+    padding: 20px 0;
+  }
+
+  .container {
+    padding-left: 12px;
+    padding-right: 12px;
+    max-width: 100%;
+  }
+
+  .booking-layout {
+    gap: 20px;
+  }
+
+  .calendar-card {
+    padding: 12px;
+    border-radius: 12px;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .calendar-nav {
+    margin-bottom: 12px;
+  }
+
+  .cal-month-label {
+    font-size: 15px;
+  }
+
+  .cal-nav-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .cal-weekdays {
+    gap: 2px;
+    margin-bottom: 4px;
+  }
+
+  .cal-weekdays span {
+    font-size: 9px;
+    padding: 3px 0;
+  }
+
+  .cal-grid {
+    gap: 4px;
+    min-height: auto;
+    max-width: 100%;
+  }
+
+  .cal-day {
+    font-size: 15px;
+    min-height: 44px;
+    border-width: 2px;
+    max-width: 100%;
+  }
+
+  .cal-day.has-slots:active {
+    transform: scale(0.95);
+  }
+
+  .cal-day.has-slots::after {
+    width: 4px;
+    height: 4px;
+    bottom: 4px;
+  }
+
+  .cal-legend {
+    gap: 10px;
+    font-size: 10px;
+    flex-wrap: wrap;
+  }
+
+  .legend-dot {
+    width: 6px;
+    height: 6px;
+  }
+
+  .time-slots-wrap {
+    padding: 12px;
+  }
+
+  .time-slot-btn {
+    padding: 14px;
+    font-size: 15px;
+  }
+
+  .booking-form-card {
+    padding: 16px;
+  }
+
+  .form-card-header h2 {
+    font-size: 18px;
+  }
+
+  .form-input {
+    padding: 14px;
+    font-size: 15px;
+  }
+
+  .btn-submit {
+    padding: 16px;
+    font-size: 16px;
+  }
+}
+
+/* Диапазон 460-375px */
+@media (max-width: 460px) {
+  .container {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .calendar-card {
+    padding: 10px;
+  }
+
+  .cal-grid {
+    gap: 3px;
+  }
+
+  .cal-day {
+    font-size: 14px;
+    min-height: 42px;
+  }
+
+  .cal-weekdays span {
+    font-size: 8px;
+  }
+
+  .cal-nav-btn {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+@media (max-width: 375px) {
+  .container {
+    padding-left: 8px;
+    padding-right: 8px;
+    max-width: 100%;
+  }
+
+  .calendar-card {
+    padding: 8px;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .cal-grid {
+    gap: 2px;
+    max-width: 100%;
+  }
+
+  .cal-day {
+    font-size: 13px;
+    min-height: 36px;
+    aspect-ratio: auto;
+    padding: 8px 2px;
+  }
+
+  .cal-weekdays span {
+    font-size: 7px;
+    padding: 2px 0;
+  }
+
+  .cal-nav-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .cal-month-label {
+    font-size: 13px;
+  }
+
+  .booking-layout {
+    gap: 16px;
+  }
+
+  .time-slots-wrap {
+    padding: 10px;
+  }
+
+  .booking-form-card {
+    padding: 12px;
+  }
+}
+
+/* Экстра маленькие экраны (меньше 360px) */
+@media (max-width: 360px) {
+  * {
+    max-width: 100%;
+  }
+
+  body, html {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  .container {
+    padding-left: 6px;
+    padding-right: 6px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .calendar-card {
+    padding: 6px;
+    margin: 0;
+  }
+
+  .cal-grid {
+    gap: 1px;
+  }
+
+  .cal-day {
+    font-size: 12px;
+    min-height: 32px;
+    padding: 6px 1px;
+  }
+
+  .cal-weekdays span {
+    font-size: 7px;
+  }
+}
 
 /* Загрузка */
 .cal-loading {
@@ -2385,6 +2687,7 @@ body { padding-top: 72px !important; }
 }
 .day-dot.free   { background: var(--accent); }
 .day-dot.booked { background: #FFA500; }
+.day-dot.completed { background: #22C55E; }
 .day-dot.closed { background: var(--text-subtle); }
 
 .day-card__counts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
@@ -2399,6 +2702,7 @@ body { padding-top: 72px !important; }
 }
 .count-badge.free   { background: rgba(78,205,196,0.15); color: var(--accent); }
 .count-badge.booked { background: rgba(255,165,0,0.15);  color: #FFA500; }
+.count-badge.completed { background: rgba(34,197,94,0.15); color: #22C55E; }
 .count-badge.empty  { color: var(--text-subtle); font-weight: 400; }
 
 .schedule-legend {
@@ -2505,6 +2809,7 @@ body { padding-top: 72px !important; }
 }
 .slot-row--free    { border-color: rgba(78,205,196,0.2);   background: rgba(78,205,196,0.03); }
 .slot-row--booked  { border-color: rgba(255,165,0,0.25);   background: rgba(255,165,0,0.03); }
+.slot-row--completed { border-color: rgba(34,197,94,0.25); background: rgba(34,197,94,0.03); }
 .slot-row--closed  { border-color: rgba(255,255,255,0.06); opacity: 0.6; }
 .slot-row--blocked { border-color: rgba(150,150,150,0.15); opacity: 0.55; }
 
@@ -2542,6 +2847,7 @@ body { padding-top: 72px !important; }
 }
 .slot-badge--free    { background: rgba(78,205,196,0.12);  color: var(--accent); }
 .slot-badge--booked  { background: rgba(255,165,0,0.12);   color: #FFA500; }
+.slot-badge--completed { background: rgba(34,197,94,0.12); color: #22C55E; }
 .slot-badge--closed  { background: rgba(255,255,255,0.05); color: var(--text-muted); }
 .slot-badge--blocked { background: rgba(150,150,150,0.08); color: #888; }
 
@@ -4074,20 +4380,99 @@ body { padding-top: 72px !important; }
 /* --- Карточки дней в расписании --- */
 @media (max-width: 768px) {
   .schedule-grid--30 {
-    grid-template-columns: repeat(5, 1fr);
-    gap: 6px;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+  }
+
+  .day-card {
+    padding: 10px 4px;
+    min-height: 80px;
+  }
+
+  .day-card__dow {
+    font-size: 9px;
+  }
+
+  .day-card__num {
+    font-size: 16px;
+  }
+
+  .count-badge {
+    font-size: 10px;
+    padding: 2px 5px;
+  }
+
+  .day-dot {
+    width: 5px;
+    height: 5px;
+  }
+
+  /* Убираем overflow на мобильных */
+  .dash-card {
+    padding: 16px;
+    overflow-x: hidden;
+  }
+
+  .container {
+    padding-left: 12px;
+    padding-right: 12px;
   }
 }
 
 @media (max-width: 480px) {
   .schedule-grid--30 {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 5px;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
   }
 
-  .day-card { padding: 8px 4px; }
-  .day-card__dow { font-size: 9px; }
-  .day-card__num { font-size: 14px; }
+  .day-card {
+    padding: 8px 2px;
+    min-height: 75px;
+  }
+
+  .day-card__dow {
+    font-size: 8px;
+  }
+
+  .day-card__num {
+    font-size: 14px;
+  }
+
+  .count-badge {
+    font-size: 9px;
+    padding: 1px 4px;
+  }
+
+  .day-dot {
+    width: 4px;
+    height: 4px;
+  }
+
+  .dash-card {
+    padding: 12px;
+  }
+
+  .container {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  /* Улучшаем читаемость на маленьких экранах */
+  .dash-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .dash-header-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .dash-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
 }
 
 /* --- Список ближайших записей --- */

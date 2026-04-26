@@ -84,21 +84,40 @@ def booking_success(request):
 @require_GET
 def available_dates(request):
     """
-    Возвращает даты с доступными слотами для указанного месяца.
-    GET: year, month → {YYYY-MM-DD: count}
+    Возвращает даты с доступными слотами.
+    Если указаны year/month — возвращает месяц (старое поведение).
+    Если указан weeks — возвращает N недель вперёд от сегодня (новое поведение для бесшовного календаря).
+    GET: ?weeks=6 → {YYYY-MM-DD: count} на 6 недель вперёд
+    GET: ?year=X&month=Y → {YYYY-MM-DD: count} для месяца (обратная совместимость)
 
     Просто читает is_available из БД (слоты уже пересчитаны при открытии страницы переноса).
     """
-    today = date.today()
-    try:
-        year  = int(request.GET.get("year",  today.year))
-        month = int(request.GET.get("month", today.month))
-    except (ValueError, TypeError):
-        return JsonResponse({"error": "Некорректные параметры"}, status=400)
+    # Автоматически закрываем прошедшие слоты
+    _auto_close_past_slots()
 
-    start_date = max(date(year, month, 1), today)
-    _, last_day = calendar.monthrange(year, month)
-    end_date = date(year, month, last_day)
+    today = date.today()
+
+    # Новый режим: weeks=N (бесшовный календарь)
+    weeks_param = request.GET.get("weeks")
+    if weeks_param:
+        try:
+            weeks = int(weeks_param)
+            weeks = max(1, min(weeks, 12))  # Ограничиваем 1-12 недель
+            start_date = today
+            end_date = today + timedelta(weeks=weeks)
+        except (ValueError, TypeError):
+            return JsonResponse({"error": "Некорректный параметр weeks"}, status=400)
+    else:
+        # Старый режим: year/month (обратная совместимость)
+        try:
+            year  = int(request.GET.get("year",  today.year))
+            month = int(request.GET.get("month", today.month))
+        except (ValueError, TypeError):
+            return JsonResponse({"error": "Некорректные параметры"}, status=400)
+
+        start_date = max(date(year, month, 1), today)
+        _, last_day = calendar.monthrange(year, month)
+        end_date = date(year, month, last_day)
 
     # Получаем все слоты в диапазоне
     all_slots = TimeSlot.objects.filter(
@@ -117,6 +136,51 @@ def available_dates(request):
 
 
 @require_GET
+def schedule_summary(request):
+    """
+    Возвращает сводку по слотам на N недель: свободные, занятые, завершённые, закрытые.
+    GET: ?weeks=4 → {YYYY-MM-DD: {free: N, booked: N, completed: N, closed: N}}
+    """
+    _auto_complete_past_bookings()
+    _auto_close_past_slots()
+
+    today = date.today()
+    weeks_param = request.GET.get("weeks", "4")
+
+    try:
+        weeks = int(weeks_param)
+        weeks = max(1, min(weeks, 12))
+        start_date = today
+        end_date = today + timedelta(weeks=weeks)
+    except (ValueError, TypeError):
+        return JsonResponse({"error": "Некорректный параметр weeks"}, status=400)
+
+    # Получаем все слоты в диапазоне
+    all_slots = TimeSlot.objects.filter(
+        date__range=(start_date, end_date)
+    ).prefetch_related("booking").order_by("date", "start_time")
+
+    # Группируем по датам
+    schedule_map = {}
+    for slot in all_slots:
+        d = slot.date.strftime("%Y-%m-%d")
+        if d not in schedule_map:
+            schedule_map[d] = {"free": 0, "booked": 0, "completed": 0, "closed": 0}
+
+        if slot.is_booked:
+            if slot.booking.status == Booking.STATUS_COMPLETED:
+                schedule_map[d]["completed"] += 1
+            else:
+                schedule_map[d]["booked"] += 1
+        elif not slot.is_available:
+            schedule_map[d]["closed"] += 1
+        elif not slot.is_past:
+            schedule_map[d]["free"] += 1
+
+    return JsonResponse(schedule_map)
+
+
+@require_GET
 def slots_for_date(request):
     """
     Возвращает слоты на конкретную дату.
@@ -124,6 +188,9 @@ def slots_for_date(request):
 
     Просто читает is_available из БД (слоты уже пересчитаны при открытии страницы переноса).
     """
+    # Автоматически закрываем прошедшие слоты
+    _auto_close_past_slots()
+
     date_str = request.GET.get("date")
     if not date_str:
         return JsonResponse({"error": "Параметр date обязателен"}, status=400)
@@ -573,14 +640,12 @@ def _auto_complete_past_bookings() -> int:
     """
     Автоматически переводит активные записи в статус 'завершено',
     если время слота + BLOCK_RADIUS_MINUTES (1.5ч) уже прошло.
-    Например: запись на 10:00 завершается в 11:30.
+    Например: запись на 10:00-11:30 завершается в 13:00.
     Вызывается при открытии дашборда.
     """
     from datetime import datetime as _dt, timedelta as _td
 
-    now       = tz.now()
-    today     = now.date()
-    cur_time  = now.time()
+    now = tz.now()
 
     bookings = list(
         Booking.objects.filter(
@@ -595,22 +660,58 @@ def _auto_complete_past_bookings() -> int:
         if not slot:
             continue
 
-        # Вычисляем время завершения: end_time + BLOCK_RADIUS_MINUTES
-        slot_end_dt = _dt.combine(slot.date, slot.end_time)
-        completion_dt = slot_end_dt + _td(minutes=BLOCK_RADIUS_MINUTES)
-        completion_time = completion_dt.time()
-        completion_date = completion_dt.date()
+        # Создаём aware datetime для времени завершения (начало + 1.5ч)
+        slot_start_naive = _dt.combine(slot.date, slot.start_time)
+        slot_start_aware = tz.make_aware(slot_start_naive)
+        completion_dt = slot_start_aware + _td(minutes=BLOCK_RADIUS_MINUTES)
 
         # Проверяем, прошло ли время завершения
-        if completion_date < today or (completion_date == today and completion_time <= cur_time):
+        if completion_dt <= now:
             booking.cache_slot_info()
             booking.status = Booking.STATUS_COMPLETED
             completed.append(booking)
+            logger.info(f"Автозавершение записи #{booking.id}: {booking.name}, слот {slot.date} {slot.start_time}")
 
     if completed:
         Booking.objects.bulk_update(completed, ["status", "slot_date", "slot_time_str"])
 
     return len(completed)
+
+
+def _auto_close_past_slots() -> int:
+    """
+    Автоматически закрывает пустые слоты, которые уже прошли или до которых осталось менее 15 минут.
+    Например: слот на 10:00 закрывается в 9:45.
+    Вызывается при открытии дашборда.
+    """
+    from datetime import datetime as _dt, timedelta as _td
+
+    now = tz.now()
+    today = now.date()
+
+    # Берём все открытые незанятые слоты на сегодня и вчера
+    yesterday = today - _td(days=1)
+    slots = list(
+        TimeSlot.objects.filter(
+            date__gte=yesterday,
+            date__lte=today,
+            is_available=True,
+            booking__isnull=True,  # Только пустые слоты
+        )
+    )
+
+    to_close = []
+    for slot in slots:
+        # Используем свойство is_past, которое уже учитывает 15-минутный буфер
+        if slot.is_past:
+            slot.is_available = False
+            to_close.append(slot)
+
+    if to_close:
+        TimeSlot.objects.bulk_update(to_close, ["is_available"])
+        logger.info(f"Автоматически закрыто {len(to_close)} прошедших слотов")
+
+    return len(to_close)
 
 
 # ─── Личный кабинет: главная ─────────────────────────────────────────────────
@@ -619,6 +720,7 @@ def _auto_complete_past_bookings() -> int:
 def dashboard(request):
     """Главная страница кабинета: 14-дневный сеточный календарь."""
     _auto_complete_past_bookings()
+    _auto_close_past_slots()
     today = date.today()
     days_ahead = 30  # Синхронизировано с горизонтом клиента
     schedule_dates = [today + timedelta(days=i) for i in range(days_ahead)]
@@ -631,12 +733,15 @@ def dashboard(request):
 
     schedule = {}
     for d in schedule_dates:
-        schedule[d] = {"free": 0, "booked": 0, "closed": 0, "slots": []}
+        schedule[d] = {"free": 0, "booked": 0, "completed": 0, "closed": 0, "slots": []}
     for slot in all_slots:
         day = schedule[slot.date]
         day["slots"].append(slot)
         if slot.is_booked:
-            day["booked"] += 1
+            if slot.booking.status == Booking.STATUS_COMPLETED:
+                day["completed"] += 1
+            else:
+                day["booked"] += 1
         elif not slot.is_available:
             day["closed"] += 1
         else:
@@ -677,6 +782,9 @@ def dashboard(request):
 @login_required
 def dashboard_day(request, date_str):
     """Страница управления конкретным днём расписания."""
+    _auto_complete_past_bookings()
+    _auto_close_past_slots()
+
     try:
         selected_date = date.fromisoformat(date_str)
     except ValueError:
@@ -687,11 +795,22 @@ def dashboard_day(request, date_str):
         .prefetch_related("booking")
         .order_by("start_time")
     )
+
+    # Показываем все слоты, но фильтруем по статусу записи
+    filtered_slots = []
+    for slot in existing_slots:
+        if not slot.is_booked:
+            # Свободный или закрытый слот — показываем
+            filtered_slots.append(slot)
+        else:
+            # Занятый слот — показываем если запись активна или завершена
+            if slot.booking.status in [Booking.STATUS_ACTIVE, Booking.STATUS_COMPLETED]:
+                filtered_slots.append(slot)
     # Кнопка быстрого добавления отключена только для открытых или занятых слотов.
     # Закрытые/авто-заблокированные слоты НЕ блокируют кнопку — их можно перетогглить.
     active_start = {
         s.start_time.strftime('%H:%M')
-        for s in existing_slots
+        for s in filtered_slots
         if s.is_booked or s.is_available
     }
     quick_times = [
@@ -702,7 +821,7 @@ def dashboard_day(request, date_str):
     context = {
         "selected_date": selected_date,
         "today": date.today(),
-        "slots": existing_slots,
+        "slots": filtered_slots,
         "is_past": selected_date < date.today(),
         "prev_date": (selected_date - timedelta(days=1)).isoformat(),
         "next_date": (selected_date + timedelta(days=1)).isoformat(),
