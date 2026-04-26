@@ -8,6 +8,7 @@
 
 Вызывать ТОЛЬКО при действиях клиента. При действиях владельца — is_client_action=False.
 """
+import json
 import logging
 import urllib.parse
 import urllib.request
@@ -219,10 +220,26 @@ def _send_telegram_notification(booking, action: str) -> None:
     lines += ["", f"<a href=\"https://ivan-gunichev.ru/dashboard/\">🔗 Открыть кабинет</a>"]
     text = "\n".join(lines)
 
+    phone_url    = "".join(c for c in info["phone"] if c in "+0123456789")
+    reply_markup = None
+    if action in ("created", "rescheduled"):
+        reply_markup = json.dumps({
+            "inline_keyboard": [
+                [
+                    {"text": "✅ Принято",        "callback_data": f"ack:{booking.pk}"},
+                    {"text": "❌ Отменить запись", "callback_data": f"cancel:{booking.pk}"},
+                ],
+                [
+                    {"text": f"📞 Позвонить {info['phone']}", "url": f"tel:{phone_url}"},
+                ],
+            ]
+        })
+
     try:
-        data = urllib.parse.urlencode({
-            "chat_id": chat_id, "text": text, "parse_mode": "HTML",
-        }).encode("utf-8")
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+        data = urllib.parse.urlencode(payload).encode("utf-8")
         urllib.request.urlopen(
             urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data),
             timeout=5,
