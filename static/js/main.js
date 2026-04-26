@@ -463,6 +463,19 @@ class BookingCalendar {
     wrap.appendChild(grid);
     this.slotsWrap.innerHTML = '';
     this.slotsWrap.appendChild(wrap);
+
+    // На мобиле прокручиваем к блоку со слотами
+    this._scrollTo(this.slotsWrap);
+  }
+
+  /* Плавный скролл к элементу с учётом фиксированного хедера (только мобиль) */
+  _scrollTo(el, delay = 0) {
+    if (!el || window.innerWidth >= 768) return;
+    const run = () => {
+      const top = el.getBoundingClientRect().top + window.scrollY - 84;
+      window.scrollTo({ top, behavior: 'smooth' });
+    };
+    delay ? setTimeout(run, delay) : requestAnimationFrame(run);
   }
 
   _selectSlot(slot, pill) {
@@ -483,12 +496,8 @@ class BookingCalendar {
     // Разблокируем форму (появляется с анимацией)
     this._unlockForm();
 
-    // На мобайле прокручиваем к форме
-    if (window.innerWidth < 768) {
-      setTimeout(() => {
-        this.formCard?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 150);
-    }
+    // На мобиле прокручиваем к форме после того, как она разблокировалась
+    this._scrollTo(this.formCard, 220);
   }
 
   _clearSlot() {
