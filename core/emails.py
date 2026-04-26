@@ -180,6 +180,15 @@ def _notify_via_php(booking, action: str) -> None:
 
 # ── Канал 3: Telegram (опционально) ──────────────────────────────────────────
 
+_DAY_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+
+_ACTION_ICON = {
+    "created":     "🟢",
+    "rescheduled": "🔄",
+    "cancelled":   "🔴",
+}
+
+
 def _send_telegram_notification(booking, action: str) -> None:
     token   = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
     chat_id = getattr(settings, "TELEGRAM_CHAT_ID",   "")
@@ -188,17 +197,26 @@ def _send_telegram_notification(booking, action: str) -> None:
 
     info = _get_booking_info(booking)
     cfg  = _ACTION_CFG.get(action, _DEFAULT_CFG)
+    icon = _ACTION_ICON.get(action, "📬")
+
+    try:
+        from datetime import datetime
+        d = datetime.strptime(info["date"], "%d.%m.%Y").date()
+        dow = _DAY_RU[d.weekday()]
+        date_line = f"📅 {dow}, {_esc(info['date'])}   ⏰ <b>{_esc(info['time'])}</b>"
+    except Exception:
+        date_line = f"📅 {_esc(info['date'])}   ⏰ <b>{_esc(info['time'])}</b>"
 
     lines = [
-        f"{cfg['subject']}",
-        "",
-        f"👤 {_esc(info['name'])}",
+        f"{icon} <b>{cfg['heading']}</b>",
+        "─" * 22,
+        f"👤 <b>{_esc(info['name'])}</b>",
         f"📞 <code>{_esc(info['phone'])}</code>",
-        f"📅 {_esc(info['date'])}   ⏰ {_esc(info['time'])}",
+        date_line,
     ]
     if info["comment"]:
         lines += ["", f"💬 <i>{_esc(info['comment'])}</i>"]
-    lines += ["", f"<a href=\"https://ivan-gunichev.ru/dashboard/\">Открыть кабинет</a>"]
+    lines += ["", f"<a href=\"https://ivan-gunichev.ru/dashboard/\">🔗 Открыть кабинет</a>"]
     text = "\n".join(lines)
 
     try:

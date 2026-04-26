@@ -43,7 +43,10 @@ logger = logging.getLogger(__name__)
 
 TZ    = ZoneInfo(settings.TIME_ZONE)
 TOKEN = settings.TELEGRAM_BOT_TOKEN
-CHAT  = int(settings.TELEGRAM_CHAT_ID) if settings.TELEGRAM_CHAT_ID else None
+try:
+    CHAT = int(settings.TELEGRAM_CHAT_ID)
+except (ValueError, TypeError):
+    CHAT = None
 
 DAY_RU = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 DAY_RU_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
