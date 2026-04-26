@@ -32,6 +32,8 @@ class TimeSlot(models.Model):
     end_time = models.TimeField(verbose_name="Конец")
     # Флаг доступности — владелец может вручную закрыть слот
     is_available = models.BooleanField(default=True, verbose_name="Доступен для записи")
+    # True = закрыт вручную инструктором; False = доступен или авто-заблокирован системой
+    is_manually_closed = models.BooleanField(default=False, verbose_name="Закрыт вручную")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
 
     class Meta:
@@ -80,8 +82,8 @@ class TimeSlot(models.Model):
         return "free"
 
     def get_time_range(self):
-        """Возвращает строку вида '08:00–10:00'."""
-        return f"{self.start_time.strftime('%H:%M')}–{self.end_time.strftime('%H:%M')}"
+        """Возвращает строку начала слота '08:00'."""
+        return self.start_time.strftime('%H:%M')
 
 
 class Booking(models.Model):

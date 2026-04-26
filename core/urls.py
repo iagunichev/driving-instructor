@@ -52,6 +52,7 @@ urlpatterns = [
     path("dashboard/history/",                               views.booking_history,    name="booking_history"),
     path("dashboard/all/",                                   views.all_bookings,       name="all_bookings"),
     path("dashboard/complete-booking/<int:booking_id>/",     views.complete_booking,   name="complete_booking"),
+    path("dashboard/stats/",                                  views.dashboard_stats,    name="dashboard_stats"),
     path("dashboard/owner-reschedule/<int:booking_id>/",     views.owner_reschedule,   name="owner_reschedule"),
     path("dashboard/month/",                             views.dashboard_month,   name="dashboard_month"),
 

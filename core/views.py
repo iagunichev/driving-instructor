@@ -2,10 +2,13 @@
 Представления (views) для сайта инструктора по вождению.
 """
 import json
+import logging
 import time as time_module
 import calendar
 import hashlib
 from datetime import date, time, timedelta
+
+logger = logging.getLogger(__name__)
 
 from django.contrib.auth import login, logout
 from django.views.decorators.cache import never_cache
@@ -20,9 +23,9 @@ from django.views.decorators.http import require_POST, require_GET
 from django.contrib import messages
 
 from .models import TimeSlot, Booking, Service
-from .forms import BookingForm, AddSlotsForm, FindBookingForm, OwnerNoteForm, ManualBookingForm
+from .forms import BookingForm, AddSlotsForm, FindBookingForm, OwnerNoteForm, ManualBookingForm, _clean_phone
 from .emails import notify_client_action
-from .constants import ALL_DAY_SLOTS
+from .constants import BLOCK_RADIUS_MINUTES, QUICK_SLOT_TIMES
 
 
 # ─── Публичные страницы ───────────────────────────────────────────────────────
@@ -42,12 +45,8 @@ def robots_txt(request):
     """robots.txt — отдаётся Django в dev; в продакшне перехватывается веб-сервером."""
     content = (
         "User-agent: *\n"
-        "Allow: /\n"
-        "Disallow: /admin/\n"
-        "Disallow: /dashboard/\n"
-        "Disallow: /login/\n"
-        "Disallow: /logout/\n"
-        "Disallow: /api/\n\n"
+        "Allow: /$\n"
+        "Disallow: /\n\n"
         "Sitemap: https://ivan-gunichev.ru/sitemap.xml\n"
     )
     return HttpResponse(content, content_type="text/plain")
@@ -61,21 +60,6 @@ def sitemap_xml(request):
     <loc>https://ivan-gunichev.ru/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>https://ivan-gunichev.ru/booking/</loc>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://ivan-gunichev.ru/my-booking/</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
-  <url>
-    <loc>https://ivan-gunichev.ru/privacy/</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.3</priority>
   </url>
 </urlset>"""
     return HttpResponse(content, content_type="application/xml")
@@ -102,6 +86,8 @@ def available_dates(request):
     """
     Возвращает даты с доступными слотами для указанного месяца.
     GET: year, month → {YYYY-MM-DD: count}
+
+    Просто читает is_available из БД (слоты уже пересчитаны при открытии страницы переноса).
     """
     today = date.today()
     try:
@@ -114,19 +100,18 @@ def available_dates(request):
     _, last_day = calendar.monthrange(year, month)
     end_date = date(year, month, last_day)
 
-    free_slots = (
-        TimeSlot.objects.filter(
-            date__range=(start_date, end_date),
-            is_available=True,
-        )
-        .exclude(booking__isnull=False)
-        .values("date")
-    )
+    # Получаем все слоты в диапазоне
+    all_slots = TimeSlot.objects.filter(
+        date__range=(start_date, end_date)
+    ).prefetch_related("booking").order_by("date", "start_time")
 
+    # Группируем по датам и считаем свободные слоты
     dates_map = {}
-    for slot in free_slots:
-        d = slot["date"].strftime("%Y-%m-%d")
-        dates_map[d] = dates_map.get(d, 0) + 1
+    for slot in all_slots:
+        d = slot.date.strftime("%Y-%m-%d")
+        # Просто читаем is_available из БД — слоты уже пересчитаны на сервере
+        if slot.is_available and not slot.is_booked and not slot.is_past:
+            dates_map[d] = dates_map.get(d, 0) + 1
 
     return JsonResponse(dates_map)
 
@@ -136,6 +121,8 @@ def slots_for_date(request):
     """
     Возвращает слоты на конкретную дату.
     GET: date → [{id, time, available, status}, ...]
+
+    Просто читает is_available из БД (слоты уже пересчитаны при открытии страницы переноса).
     """
     date_str = request.GET.get("date")
     if not date_str:
@@ -150,14 +137,16 @@ def slots_for_date(request):
 
     result = []
     for slot in slots:
+        # Просто читаем is_available из БД — слоты уже пересчитаны на сервере
         is_free = slot.is_available and not slot.is_booked and not slot.is_past
+
         result.append({
             "id": slot.pk,
             "time": slot.get_time_range(),
             "start": slot.start_time.strftime("%H:%M"),
             "end": slot.end_time.strftime("%H:%M"),
             "available": is_free,
-            "status": slot.status_class,
+            "status": "free" if is_free else slot.status_class,
         })
 
     return JsonResponse(result, safe=False)
@@ -226,6 +215,11 @@ def create_booking(request):
         except Exception:
             pass
 
+        try:
+            _recompute_day_availability(slot.date)
+        except Exception:
+            logger.exception("_recompute_day_availability после create_booking")
+
         return JsonResponse({
             "success": True,
             "redirect": "/booking/success/",
@@ -233,7 +227,8 @@ def create_booking(request):
         })
 
     except Exception as exc:
-        return JsonResponse({"success": False, "error": str(exc)}, status=500)
+        logger.exception("create_booking: %s", exc)
+        return JsonResponse({"success": False, "error": "Внутренняя ошибка сервера. Попробуйте ещё раз."}, status=500)
 
 
 # ─── Самообслуживание клиента ─────────────────────────────────────────────────
@@ -251,13 +246,10 @@ def my_booking_page(request):
         _set_no_cache_headers(response)
         return response
 
-    # Если запись была найдена в текущей сессии — показываем её
-    found_booking = _get_session_booking(request)
+    # Каждый GET сбрасывает сессию — страница всегда просит ввести номер заново
+    request.session.pop("client_bookings", None)
     form = FindBookingForm()
-    response = render(request, "core/my_booking.html", {
-        "form": form,
-        "found_booking": found_booking,
-    })
+    response = render(request, "core/my_booking.html", {"form": form, "found_bookings": []})
     _set_no_cache_headers(response)
     return response
 
@@ -287,49 +279,61 @@ def find_my_booking(request):
 
     form = FindBookingForm(request.POST)
     if not form.is_valid():
-        return render(request, "core/my_booking.html", {"form": form, "found_booking": None})
+        return render(request, "core/my_booking.html", {"form": form, "found_bookings": []})
 
     phone = form.cleaned_data["phone"]
-    booking = (
+    bookings = list(
         Booking.objects.filter(phone=phone, slot__date__gte=date.today())
         .select_related("slot")
         .order_by("slot__date", "slot__start_time")
-        .first()
     )
 
-    if not booking:
+    if not bookings:
         messages.warning(
             request,
             f"Запись для номера {phone} не найдена. "
             "Возможно, занятие уже прошло или запись была отменена.",
         )
-        return render(request, "core/my_booking.html", {"form": form, "found_booking": None})
+        return render(request, "core/my_booking.html", {"form": form, "found_bookings": []})
 
-    token = _make_booking_token(booking.id, phone)
-    request.session["client_booking"] = {
-        "booking_id": booking.id,
+    request.session["client_bookings"] = {
         "phone": phone,
-        "token": token,
+        "entries": [
+            {"booking_id": b.id, "token": _make_booking_token(b.id, phone)}
+            for b in bookings
+        ],
     }
-    return redirect("my_booking")
+    # Рендерим напрямую — не делаем redirect, чтобы сессия не сбросилась
+    form = FindBookingForm()
+    response = render(request, "core/my_booking.html", {
+        "form": form,
+        "found_bookings": bookings,
+    })
+    _set_no_cache_headers(response)
+    return response
 
 
 @require_POST
 def cancel_my_booking(request):
     """Отмена записи клиентом (через сессию)."""
-    session_data = request.session.get("client_booking")
-    if not session_data:
+    if not request.session.get("client_bookings"):
         messages.error(request, "Сессия истекла. Введите номер телефона снова.")
         return redirect("my_booking")
 
-    booking = get_object_or_404(Booking, pk=session_data["booking_id"])
-    expected_token = _make_booking_token(booking.id, session_data["phone"])
-    if session_data.get("token") != expected_token:
+    try:
+        booking_id = int(request.POST.get("booking_id", 0))
+    except (ValueError, TypeError):
+        messages.error(request, "Некорректный запрос.")
+        return redirect("my_booking")
+
+    booking = _get_session_booking_by_id(request, booking_id)
+    if not booking:
         messages.error(request, "Ошибка безопасности. Попробуйте снова.")
         return redirect("my_booking")
 
     # Сохраняем дату/время до обнуления слота
     booking.cache_slot_info()
+    slot_date_obj = booking.slot.date if booking.slot else None
     slot_date = booking.slot_date.strftime("%d.%m.%Y") if booking.slot_date else "—"
     slot_time = booking.slot_time_str or "—"
 
@@ -342,13 +346,19 @@ def cancel_my_booking(request):
     booking.slot   = None
     booking.status = Booking.STATUS_CANCELLED
     booking.save(update_fields=["slot", "status", "slot_date", "slot_time_str"])
-    request.session.pop("client_booking", None)
+    request.session.pop("client_bookings", None)
 
     # Клиентское действие — уведомляем владельца
     try:
         notify_client_action(booking, "cancelled")
     except Exception:
         pass
+
+    if slot_date_obj:
+        try:
+            _recompute_day_availability(slot_date_obj)
+        except Exception:
+            logger.exception("_recompute_day_availability после cancel_my_booking")
 
     request.session["mybooking_result"] = {
         "action": "cancelled",
@@ -363,14 +373,23 @@ def reschedule_my_booking(request):
     GET: показывает календарь для выбора нового слота.
     POST: сохраняет перенос.
     """
-    session_data = request.session.get("client_booking")
-    if not session_data:
+    if not request.session.get("client_bookings"):
         messages.error(request, "Сессия истекла. Введите номер телефона снова.")
         return redirect("my_booking")
 
-    booking = get_object_or_404(Booking, pk=session_data["booking_id"])
-    expected_token = _make_booking_token(booking.id, session_data["phone"])
-    if session_data.get("token") != expected_token:
+    try:
+        booking_id = int(
+            request.GET.get("booking_id") or request.POST.get("booking_id") or 0
+        )
+    except (ValueError, TypeError):
+        messages.error(request, "Некорректный запрос.")
+        return redirect("my_booking")
+
+    logger.info(f"reschedule_my_booking: booking_id={booking_id}, method={request.method}")
+
+    booking = _get_session_booking_by_id(request, booking_id)
+    if not booking:
+        logger.warning(f"reschedule_my_booking: booking #{booking_id} не найдена в сессии")
         messages.error(request, "Ошибка безопасности. Попробуйте снова.")
         return redirect("my_booking")
 
@@ -390,6 +409,7 @@ def reschedule_my_booking(request):
             messages.error(request, "Этот слот уже занят.")
             return render(request, "core/reschedule.html", {"booking": booking})
 
+        old_slot_date = booking.slot.date if booking.slot else None
         old_date  = booking.slot.date.strftime("%d.%m.%Y")
         old_time  = booking.slot.get_time_range()
         new_date  = new_slot.date.strftime("%d.%m.%Y")
@@ -398,13 +418,20 @@ def reschedule_my_booking(request):
         booking.slot = new_slot
         booking.cache_slot_info()
         booking.save(update_fields=["slot", "slot_date", "slot_time_str"])
-        request.session.pop("client_booking", None)
+        request.session.pop("client_bookings", None)
 
         # Клиентское действие — уведомляем владельца
         try:
             notify_client_action(booking, "rescheduled")
         except Exception:
             pass
+
+        try:
+            if old_slot_date:
+                _recompute_day_availability(old_slot_date)
+            _recompute_day_availability(new_slot.date)
+        except Exception:
+            logger.exception("_recompute_day_availability после reschedule_my_booking")
 
         request.session["mybooking_result"] = {
             "action": "rescheduled",
@@ -413,23 +440,56 @@ def reschedule_my_booking(request):
         }
         return redirect("my_booking")
 
+    # GET запрос — РАЗБЛОКИРУЕМ СЛОТЫ В БД для этой записи
+    if booking.slot:
+        logger.info(f"Разблокировка слотов для записи #{booking.pk}, дата {booking.slot.date}")
+        try:
+            _recompute_day_availability(booking.slot.date, exclude_booking_id=booking.pk)
+        except Exception:
+            logger.exception("_recompute_day_availability при открытии reschedule")
+
     return render(request, "core/reschedule.html", {"booking": booking})
 
 
-def _get_session_booking(request):
-    """Вспомогательная: возвращает запись из сессии или None."""
-    session_data = request.session.get("client_booking")
+def _get_session_bookings(request):
+    """Вспомогательная: возвращает все записи из сессии (список)."""
+    session_data = request.session.get("client_bookings")
+    if not session_data:
+        return []
+    phone = session_data.get("phone", "")
+    result = []
+    for entry in session_data.get("entries", []):
+        bid = entry.get("booking_id")
+        if not bid:
+            continue
+        expected = _make_booking_token(bid, phone)
+        if entry.get("token") != expected:
+            continue
+        try:
+            result.append(Booking.objects.select_related("slot").get(pk=bid))
+        except Booking.DoesNotExist:
+            pass
+    if not result:
+        request.session.pop("client_bookings", None)
+    return result
+
+
+def _get_session_booking_by_id(request, booking_id):
+    """Вспомогательная: возвращает конкретную запись из сессии по ID."""
+    session_data = request.session.get("client_bookings")
     if not session_data:
         return None
-    try:
-        booking = Booking.objects.select_related("slot").get(pk=session_data["booking_id"])
-        expected_token = _make_booking_token(booking.id, session_data["phone"])
-        if session_data.get("token") != expected_token:
-            return None
-        return booking
-    except Booking.DoesNotExist:
-        request.session.pop("client_booking", None)
-        return None
+    phone = session_data.get("phone", "")
+    for entry in session_data.get("entries", []):
+        if entry.get("booking_id") == booking_id:
+            expected = _make_booking_token(booking_id, phone)
+            if entry.get("token") != expected:
+                return None
+            try:
+                return Booking.objects.select_related("slot").get(pk=booking_id)
+            except Booking.DoesNotExist:
+                return None
+    return None
 
 
 def _make_booking_token(booking_id, phone):
@@ -437,6 +497,55 @@ def _make_booking_token(booking_id, phone):
     from django.conf import settings
     raw = f"{booking_id}:{phone}:{settings.SECRET_KEY[:16]}"
     return hashlib.sha256(raw.encode()).hexdigest()[:20]
+
+
+def _recompute_day_availability(target_date, exclude_booking_id=None):
+    """
+    Пересчитывает доступность слотов дня после любого изменения записи.
+    Если запись стоит на T, блокируются слоты в окне (T−90мин, T) и (T, T+90мин).
+    Граничные значения не блокируются — т.е. слот ровно за 1:30 до/после остаётся открытым.
+
+    exclude_booking_id: ID записи, которую нужно игнорировать при расчёте блокировок.
+                        Используется при переносе, чтобы старая позиция не блокировала соседние слоты.
+    """
+    logger.info(f"_recompute_day_availability: дата={target_date}, exclude_booking_id={exclude_booking_id}")
+
+    slots = list(TimeSlot.objects.filter(date=target_date).prefetch_related("booking"))
+    logger.info(f"Всего слотов на {target_date}: {len(slots)}")
+
+    booked_starts = [
+        s.start_time.hour * 60 + s.start_time.minute
+        for s in slots
+        if s.is_booked and (exclude_booking_id is None or s.booking.pk != exclude_booking_id)
+    ]
+    logger.info(f"Занятые слоты (минуты от полуночи): {booked_starts}")
+
+    to_update = []
+    for slot in slots:
+        if slot.is_booked or slot.is_manually_closed:
+            continue
+        sm = slot.start_time.hour * 60 + slot.start_time.minute
+        blocked = any(
+            (T - BLOCK_RADIUS_MINUTES < sm < T) or (T < sm < T + BLOCK_RADIUS_MINUTES)
+            for T in booked_starts
+        )
+        new_avail = not blocked
+        if slot.is_available != new_avail:
+            logger.info(f"Слот {slot.start_time} ({sm}мин): было available={slot.is_available}, станет {new_avail}")
+            slot.is_available = new_avail
+            to_update.append(slot)
+
+    logger.info(f"Слотов к обновлению: {len(to_update)}")
+    if to_update:
+        TimeSlot.objects.bulk_update(to_update, ["is_available"])
+        logger.info(f"bulk_update выполнен для {len(to_update)} слотов")
+
+        # Проверка: читаем из БД что реально сохранилось
+        updated_slots = TimeSlot.objects.filter(
+            date=target_date,
+            pk__in=[s.pk for s in to_update]
+        ).values_list('start_time', 'is_available')
+        logger.info(f"Проверка БД после update: {list(updated_slots)}")
 
 
 # ─── Аутентификация ───────────────────────────────────────────────────────────
@@ -463,8 +572,12 @@ def owner_logout(request):
 def _auto_complete_past_bookings() -> int:
     """
     Автоматически переводит активные записи в статус 'завершено',
-    если время слота уже прошло. Вызывается при открытии дашборда.
+    если время слота + BLOCK_RADIUS_MINUTES (1.5ч) уже прошло.
+    Например: запись на 10:00 завершается в 11:30.
+    Вызывается при открытии дашборда.
     """
+    from datetime import datetime as _dt, timedelta as _td
+
     now       = tz.now()
     today     = now.date()
     cur_time  = now.time()
@@ -473,18 +586,31 @@ def _auto_complete_past_bookings() -> int:
         Booking.objects.filter(
             status=Booking.STATUS_ACTIVE,
             slot__isnull=False,
-        ).filter(
-            Q(slot__date__lt=today) |
-            Q(slot__date=today, slot__end_time__lte=cur_time)
         ).select_related("slot")
     )
 
+    completed = []
     for booking in bookings:
-        booking.cache_slot_info()
-        booking.status = Booking.STATUS_COMPLETED
-        booking.save(update_fields=["status", "slot_date", "slot_time_str"])
+        slot = booking.slot
+        if not slot:
+            continue
 
-    return len(bookings)
+        # Вычисляем время завершения: end_time + BLOCK_RADIUS_MINUTES
+        slot_end_dt = _dt.combine(slot.date, slot.end_time)
+        completion_dt = slot_end_dt + _td(minutes=BLOCK_RADIUS_MINUTES)
+        completion_time = completion_dt.time()
+        completion_date = completion_dt.date()
+
+        # Проверяем, прошло ли время завершения
+        if completion_date < today or (completion_date == today and completion_time <= cur_time):
+            booking.cache_slot_info()
+            booking.status = Booking.STATUS_COMPLETED
+            completed.append(booking)
+
+    if completed:
+        Booking.objects.bulk_update(completed, ["status", "slot_date", "slot_time_str"])
+
+    return len(completed)
 
 
 # ─── Личный кабинет: главная ─────────────────────────────────────────────────
@@ -556,33 +682,33 @@ def dashboard_day(request, date_str):
     except ValueError:
         return redirect("dashboard")
 
-    existing_slots = (
+    existing_slots = list(
         TimeSlot.objects.filter(date=selected_date)
         .prefetch_related("booking")
         .order_by("start_time")
     )
-    existing_map = {s.start_time: s for s in existing_slots}
-
-    slot_data = []
-    for start, end in ALL_DAY_SLOTS:
-        slot = existing_map.get(start)
-        slot_data.append({
-            "start": start,
-            "end": end,
-            "slot": slot,
-            "time_range": f"{start.strftime('%H:%M')}–{end.strftime('%H:%M')}",
-            "value": f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}",
-        })
+    # Кнопка быстрого добавления отключена только для открытых или занятых слотов.
+    # Закрытые/авто-заблокированные слоты НЕ блокируют кнопку — их можно перетогглить.
+    active_start = {
+        s.start_time.strftime('%H:%M')
+        for s in existing_slots
+        if s.is_booked or s.is_available
+    }
+    quick_times = [
+        {"time_str": t.strftime('%H:%M'), "exists": t.strftime('%H:%M') in active_start}
+        for t in QUICK_SLOT_TIMES
+    ]
 
     context = {
         "selected_date": selected_date,
         "today": date.today(),
-        "slot_data": slot_data,
+        "slots": existing_slots,
         "is_past": selected_date < date.today(),
-        "bookings_today": [s for s in existing_slots if s.is_booked],
         "prev_date": (selected_date - timedelta(days=1)).isoformat(),
         "next_date": (selected_date + timedelta(days=1)).isoformat(),
         "manual_form": ManualBookingForm(),
+        "quick_times": quick_times,
+        "date_str": selected_date.isoformat(),
     }
     return render(request, "core/dashboard_day.html", context)
 
@@ -600,13 +726,16 @@ def add_single_slot(request, date_str):
     except ValueError:
         return JsonResponse({"success": False, "error": "Некорректная дата"}, status=400)
 
-    time_range = request.POST.get("time_range", "")
+    start_str = request.POST.get("start_time", "").strip()
     try:
-        start_str, end_str = time_range.split("-")
-        start = time(*map(int, start_str.split(":")))
-        end   = time(*map(int, end_str.split(":")))
+        h, m = map(int, start_str.split(":"))
+        start = time(h, m)
     except (ValueError, AttributeError):
         return JsonResponse({"success": False, "error": "Некорректный формат времени"}, status=400)
+
+    from datetime import datetime as _dt, timedelta as _td
+    end_dt = _dt.combine(selected_date, start) + _td(minutes=BLOCK_RADIUS_MINUTES)
+    end = end_dt.time()
 
     slot, created = TimeSlot.objects.get_or_create(
         date=selected_date,
@@ -614,12 +743,33 @@ def add_single_slot(request, date_str):
         defaults={"end_time": end, "is_available": True},
     )
 
+    if not created and slot.is_booked:
+        return JsonResponse({"success": False, "error": "Слот уже занят записью."}, status=409)
+
+    if not created and not slot.is_available:
+        # Повторное открытие закрытого/авто-заблокированного слота
+        slot.end_time = end
+        slot.is_available = True
+        slot.is_manually_closed = False
+        slot.save(update_fields=["end_time", "is_available", "is_manually_closed"])
+        created = True  # для сообщения "Слот добавлен"
+
+    # Пересчёт: новый слот может попасть в буфер существующей записи
+    try:
+        _recompute_day_availability(selected_date)
+    except Exception:
+        logger.exception("_recompute_day_availability после add_single_slot")
+
+    slot.refresh_from_db()
+
     return JsonResponse({
         "success": True,
         "created": created,
         "slot_id": slot.pk,
-        "time_range": f"{start.strftime('%H:%M')}–{end.strftime('%H:%M')}",
+        "start_time": start.strftime('%H:%M'),
+        "time_range": slot.get_time_range(),
         "is_available": slot.is_available,
+        "is_manually_closed": slot.is_manually_closed,
         "message": "Слот добавлен" if created else "Слот уже существует",
     })
 
@@ -688,7 +838,9 @@ def toggle_slot(request, slot_id):
     if slot.is_past:
         return JsonResponse({"success": False, "error": "Прошедший слот нельзя изменить."}, status=400)
     slot.is_available = not slot.is_available
-    slot.save(update_fields=["is_available"])
+    # Закрытый вручную — не трогать авто-блокировкой; открытый вручную — отдать системе
+    slot.is_manually_closed = not slot.is_available
+    slot.save(update_fields=["is_available", "is_manually_closed"])
     return JsonResponse({"success": True, "is_available": slot.is_available})
 
 
@@ -705,6 +857,7 @@ def cancel_booking(request, booking_id):
         name = booking.name
 
         booking.cache_slot_info()
+        slot_date_obj = booking.slot.date if booking.slot else None
         slot_str = f"{booking.slot_date.strftime('%d.%m.%Y')} {booking.slot_time_str}" if booking.slot_date else "—"
 
         if booking.slot:
@@ -715,12 +868,19 @@ def cancel_booking(request, booking_id):
         booking.status = Booking.STATUS_CANCELLED
         booking.save(update_fields=["slot", "status", "slot_date", "slot_time_str"])
 
+        if slot_date_obj:
+            try:
+                _recompute_day_availability(slot_date_obj)
+            except Exception:
+                logger.exception("_recompute_day_availability после cancel_booking")
+
         return JsonResponse({
             "success": True,
             "message": f"Запись {name} на {slot_str} отменена.",
         })
     except Exception as exc:
-        return JsonResponse({"success": False, "error": str(exc)}, status=500)
+        logger.exception("cancel_booking #%s: %s", booking_id, exc)
+        return JsonResponse({"success": False, "error": "Внутренняя ошибка сервера."}, status=500)
 
 
 @login_required
@@ -755,12 +915,18 @@ def create_manual_booking(request, slot_id):
 
     # Создание владельцем — уведомления НЕ отправляем
 
+    try:
+        _recompute_day_availability(slot.date)
+    except Exception:
+        logger.exception("_recompute_day_availability после create_manual_booking")
+
     return JsonResponse({
         "success": True,
         "booking_id": booking.pk,
         "name": booking.name,
         "phone": booking.phone,
         "comment": booking.comment,
+        "time_range": slot.get_time_range(),
         "message": f"Запись для {booking.name} создана.",
     })
 
@@ -785,7 +951,8 @@ def booking_detail(request, booking_id):
             "is_past":    (d < date.today()) if d else True,
         })
     except Exception as exc:
-        return JsonResponse({"success": False, "error": str(exc)}, status=500)
+        logger.exception("booking_detail #%s: %s", booking_id, exc)
+        return JsonResponse({"success": False, "error": "Внутренняя ошибка сервера."}, status=500)
 
 
 @login_required
@@ -794,11 +961,16 @@ def booking_update(request, booking_id):
     """AJAX: обновляет имя, телефон и заметку инструктора."""
     try:
         booking = get_object_or_404(Booking, pk=booking_id)
-        name  = request.POST.get("name",  "").strip()
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        name  = request.POST.get("name",  "").strip()[:100]
         phone = request.POST.get("phone", "").strip()
         owner_note = request.POST.get("owner_note", "").strip()
         if not name or not phone:
             return JsonResponse({"success": False, "error": "Имя и телефон обязательны"}, status=400)
+        try:
+            phone = _clean_phone(phone)
+        except DjangoValidationError as e:
+            return JsonResponse({"success": False, "error": e.message}, status=400)
         booking.name       = name
         booking.phone      = phone
         booking.owner_note = owner_note
@@ -810,7 +982,8 @@ def booking_update(request, booking_id):
             "owner_note": booking.owner_note,
         })
     except Exception as exc:
-        return JsonResponse({"success": False, "error": str(exc)}, status=500)
+        logger.exception("booking_update #%s: %s", booking_id, exc)
+        return JsonResponse({"success": False, "error": "Внутренняя ошибка сервера."}, status=500)
 
 
 @login_required
@@ -819,13 +992,34 @@ def booking_delete(request, booking_id):
     """AJAX: полное удаление записи из БД (освобождает слот)."""
     try:
         booking = get_object_or_404(Booking, pk=booking_id)
+        slot_date_obj = booking.slot.date if booking.slot else None
         if booking.slot:
             booking.slot.is_available = True
             booking.slot.save(update_fields=["is_available"])
         booking.delete()
+        if slot_date_obj:
+            try:
+                _recompute_day_availability(slot_date_obj)
+            except Exception:
+                logger.exception("_recompute_day_availability после booking_delete")
         return JsonResponse({"success": True})
     except Exception as exc:
-        return JsonResponse({"success": False, "error": str(exc)}, status=500)
+        logger.exception("booking_delete #%s: %s", booking_id, exc)
+        return JsonResponse({"success": False, "error": "Внутренняя ошибка сервера."}, status=500)
+
+
+@login_required
+@require_GET
+def dashboard_stats(request):
+    """AJAX: текущие счётчики для дашборда (обновляются без перезагрузки)."""
+    today = date.today()
+    thirty_days_ago = today - timedelta(days=30)
+    return JsonResponse({
+        "total":     Booking.objects.count(),
+        "active":    Booking.objects.filter(status=Booking.STATUS_ACTIVE, slot__date__gte=today).count(),
+        "completed": Booking.objects.filter(status=Booking.STATUS_COMPLETED, slot_date__gte=thirty_days_ago).count(),
+        "cancelled": Booking.objects.filter(status=Booking.STATUS_CANCELLED, slot_date__gte=thirty_days_ago).count(),
+    })
 
 
 @login_required
@@ -839,7 +1033,8 @@ def complete_booking(request, booking_id):
         booking.save(update_fields=["status", "slot_date", "slot_time_str"])
         return JsonResponse({"success": True, "status": "completed"})
     except Exception as exc:
-        return JsonResponse({"success": False, "error": str(exc)}, status=500)
+        logger.exception("complete_booking #%s: %s", booking_id, exc)
+        return JsonResponse({"success": False, "error": "Внутренняя ошибка сервера."}, status=500)
 
 
 @login_required
@@ -866,6 +1061,7 @@ def owner_reschedule(request, booking_id):
             return render(request, "core/owner_reschedule.html", {"booking": booking})
 
         # Освобождаем старый слот если был
+        old_slot_date = booking.slot.date if booking.slot else None
         if booking.slot:
             booking.slot.is_available = True
             booking.slot.save(update_fields=["is_available"])
@@ -875,9 +1071,23 @@ def owner_reschedule(request, booking_id):
         booking.status = Booking.STATUS_ACTIVE
         booking.save(update_fields=["slot", "status", "slot_date", "slot_time_str"])
 
-        verb = "перенесена" if booking.status == Booking.STATUS_ACTIVE else "восстановлена"
-        messages.success(request, f"Запись {booking.name} {verb} на {new_slot}.")
+        try:
+            if old_slot_date:
+                _recompute_day_availability(old_slot_date)
+            _recompute_day_availability(new_slot.date)
+        except Exception:
+            logger.exception("_recompute_day_availability после owner_reschedule")
+
+        messages.success(request, f"Запись {booking.name} перенесена на {new_slot}.")
         return redirect("all_bookings")
+
+    # GET запрос — РАЗБЛОКИРУЕМ СЛОТЫ В БД для этой записи
+    if booking.slot:
+        logger.info(f"Разблокировка слотов для записи #{booking.pk}, дата {booking.slot.date}")
+        try:
+            _recompute_day_availability(booking.slot.date, exclude_booking_id=booking.pk)
+        except Exception:
+            logger.exception("_recompute_day_availability при открытии owner_reschedule")
 
     return render(request, "core/owner_reschedule.html", {"booking": booking})
 
@@ -1059,7 +1269,10 @@ def service_create(request):
     """AJAX POST: создать услугу."""
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
-    data = json.loads(request.body)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Некорректный JSON"}, status=400)
     service = Service.objects.create(
         emoji=data.get("emoji", "").strip()[:10],
         title=data.get("title", "").strip()[:255],
@@ -1077,7 +1290,10 @@ def service_update(request, pk):
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
     service = get_object_or_404(Service, pk=pk)
-    data = json.loads(request.body)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Некорректный JSON"}, status=400)
     service.emoji       = data.get("emoji", service.emoji).strip()[:10]
     service.title       = data.get("title", service.title).strip()[:255]
     service.description = data.get("description", service.description).strip()
@@ -1116,7 +1332,10 @@ def service_reorder(request):
     """
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
-    data  = json.loads(request.body)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Некорректный JSON"}, status=400)
     order = data.get("order", [])
     for idx, service_id in enumerate(order):
         Service.objects.filter(pk=service_id).update(order=idx)

@@ -65,6 +65,7 @@
           <div id="form-status" class="form-status" style="display:none;" role="alert"></div>
           <form action="{% url 'reschedule_my_booking' %}" method="post" id="reschedule-form">
             {% csrf_token %}
+            <input type="hidden" name="booking_id" value="{{ booking.id }}">
             <input type="hidden" id="slot-id-input" name="slot_id" value="">
             <button type="submit" class="btn btn-primary btn-submit" id="submit-btn" disabled>
               Подтвердить перенос

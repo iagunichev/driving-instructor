@@ -35,6 +35,12 @@ def notify_client_action(booking, action: str, is_client_action: bool = True) ->
     if not is_client_action:
         return
 
+    # В dev-режиме (консольный backend) пропускаем внешние каналы
+    if settings.EMAIL_BACKEND == "django.core.mail.backends.console.EmailBackend":
+        logger.debug("Dev mode: email/PHP уведомление пропущено (запись #%s)", booking.pk)
+        _send_telegram_notification(booking, action)
+        return
+
     smtp_ok = _notify_via_smtp(booking, action)
     if not smtp_ok:
         _notify_via_php(booking, action)
