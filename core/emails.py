@@ -186,19 +186,24 @@ def _send_telegram_notification(booking, action: str) -> None:
     if not token or not chat_id:
         return
 
-    info  = _get_booking_info(booking)
-    cfg   = _ACTION_CFG.get(action, _DEFAULT_CFG)
-    text  = (
-        f"*{cfg['subject']}*\n\n"
-        f"👤 {info['name']}\n📞 {info['phone']}\n"
-        f"📅 {info['date']}  ⏰ {info['time']}\n"
-    )
+    info = _get_booking_info(booking)
+    cfg  = _ACTION_CFG.get(action, _DEFAULT_CFG)
+
+    lines = [
+        f"{cfg['subject']}",
+        "",
+        f"👤 {_esc(info['name'])}",
+        f"📞 <code>{_esc(info['phone'])}</code>",
+        f"📅 {_esc(info['date'])}   ⏰ {_esc(info['time'])}",
+    ]
     if info["comment"]:
-        text += f"\n💬 {info['comment']}"
+        lines += ["", f"💬 <i>{_esc(info['comment'])}</i>"]
+    lines += ["", f"<a href=\"https://ivan-gunichev.ru/dashboard/\">Открыть кабинет</a>"]
+    text = "\n".join(lines)
 
     try:
         data = urllib.parse.urlencode({
-            "chat_id": chat_id, "text": text, "parse_mode": "Markdown",
+            "chat_id": chat_id, "text": text, "parse_mode": "HTML",
         }).encode("utf-8")
         urllib.request.urlopen(
             urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data),
