@@ -817,6 +817,72 @@ body { padding-top: 72px !important; }
   line-height: 1.75;
 }
 
+/* ── 11б. Car — фото + layout ── */
+/* ── 11б. Car — Почему на вашем авто ── */
+.car-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 40px;
+  align-items: start;
+}
+
+.car-content h2 { margin-bottom: 16px; }
+
+.car-content .lead-text { margin-bottom: 28px; }
+
+.car-media .final-phrase { margin-top: 20px; max-width: none; }
+
+.car-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.car-photo-wrap {
+  position: relative;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+}
+
+.car-photo-wrap img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: var(--r-xl);
+  border: 1px solid rgba(78,205,196,0.15);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+}
+
+.car-photo-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-xl);
+  background: linear-gradient(to top, rgba(7,7,16,0.65) 0%, transparent 55%);
+  pointer-events: none;
+}
+
+.car-photo-badge {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(7,7,16,0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(78,205,196,0.3);
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  z-index: 2;
+}
+
+.car-badge-icon { font-size: 22px; flex-shrink: 0; }
+
 /* ── 12. Отзывы ── */
 .reviews-grid {
   display: grid;
@@ -2525,6 +2591,7 @@ body { padding-top: 72px !important; }
   .cta-card { padding: 18px 14px; }
   .section { padding: 40px 0; }
   .section-header { margin-bottom: 20px; }
+  .car-photo-wrap { max-height: 360px; }
 }
 
 @media (min-width: 576px) {
@@ -2544,6 +2611,8 @@ body { padding-top: 72px !important; }
 
   .hero-grid { grid-template-columns: 1fr 1fr; gap: 48px; }
   .about-grid { grid-template-columns: 1fr 1fr; gap: 64px; }
+
+  .car-grid { grid-template-columns: 1fr 1fr; gap: 64px; }
 
   .footer-inner { grid-template-columns: 1fr 1fr 1fr; }
 
@@ -4646,7 +4715,8 @@ body { padding-top: 72px !important; }
   .btn-outline,
   .faq-item,
   .modal-overlay > *,
-  .cookie-banner { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .cookie-banner,
+  .car-photo-badge { backdrop-filter: none; -webkit-backdrop-filter: none; }
 
   /* Hover-трансформы на тач-устройствах не нужны:
      на мобиле hover срабатывает после tap и вызывает задержку */

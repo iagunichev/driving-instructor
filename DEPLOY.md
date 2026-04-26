@@ -325,25 +325,31 @@ server {
     listen 80;
     server_name ivan-gunichev.ru www.ivan-gunichev.ru;
 
-    # Статические файлы
+    # Статические файлы — имена содержат MD5-хеш (ManifestStaticFilesStorage),
+    # поэтому при изменении файла меняется и имя. Можно кешировать вечно.
     location /static/ {
         alias /home/django/site/staticfiles/;
-        expires 30d;
-        add_header Cache-Control "public, immutable";
+        expires 365d;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        access_log off;
     }
 
-    # Медиафайлы
+    # Медиафайлы (загружаемые пользователями, без хешей — короткий кеш)
     location /media/ {
         alias /home/django/site/media/;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800";
+        access_log off;
     }
 
-    # Всё остальное → Gunicorn
+    # HTML → Gunicorn; браузер каждый раз проверяет актуальность страницы
     location / {
         proxy_pass         http://127.0.0.1:8000;
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
         proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;
+        add_header Cache-Control "no-cache";
     }
 }
 ```
@@ -462,14 +468,16 @@ tail -f /home/django/gunicorn-error.log
 ```bash
 ssh django@IP_VPS
 cd /home/django/site
+source venv/bin/activate
 
-# Если через Git:
 git pull
 
-# Всегда после изменений:
-source venv/bin/activate
-pip install -r requirements.txt   # если менялись зависимости
-python manage.py migrate          # если менялись модели
+pip install -r requirements.txt        # если менялись зависимости
+python manage.py migrate               # если менялись модели
+
+# collectstatic ОБЯЗАТЕЛЕН после любого изменения CSS/JS/изображений.
+# ManifestStaticFilesStorage пересчитывает MD5-хеши и обновляет staticfiles.json.
+# Старые файлы с хешами остаются рядом — браузеры с кешем получат их сами.
 python manage.py collectstatic --noinput
 
 sudo systemctl restart gunicorn

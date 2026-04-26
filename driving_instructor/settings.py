@@ -205,6 +205,17 @@ MAIL_PHP_TOKEN = config("MAIL_PHP_TOKEN", default="DJANGO_MAIL_TOKEN_REPLACE_ME"
 
 # ── Продакшн-безопасность (применяется только при DEBUG=False) ───────────────
 if not DEBUG:
+    # Статика с хешами в именах файлов — вечный кеш безопасен, т.к. при
+    # изменении файла меняется его имя. Генерируется через collectstatic.
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage",
+        },
+    }
+
     # HTTPS
     SECURE_SSL_REDIRECT            = True
     SECURE_PROXY_SSL_HEADER        = ("HTTP_X_FORWARDED_PROTO", "https")
