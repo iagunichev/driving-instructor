@@ -30,6 +30,7 @@ django.setup()
 
 from django.conf import settings
 from core.models import Booking
+from asgiref.sync import sync_to_async
 
 from telegram import Update, BotCommand
 from telegram.constants import ParseMode
@@ -52,6 +53,47 @@ DAY_RU = ["Понедельник", "Вторник", "Среда", "Четве�
 DAY_RU_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
 
+# ── Запросы к БД (sync → async) ────────────────────────────────────────────────
+
+@sync_to_async
+def _get_bookings_for_date(d: date) -> list:
+    return list(
+        Booking.objects
+        .filter(status=Booking.STATUS_ACTIVE, slot__date=d)
+        .select_related("slot")
+        .order_by("slot__start_time")
+    )
+
+
+@sync_to_async
+def _get_bookings_week(start: date) -> list:
+    return list(
+        Booking.objects
+        .filter(
+            status=Booking.STATUS_ACTIVE,
+            slot__date__gte=start,
+            slot__date__lt=start + timedelta(days=7),
+        )
+        .select_related("slot")
+        .order_by("slot__date", "slot__start_time")
+    )
+
+
+@sync_to_async
+def _get_all_active_bookings() -> list:
+    return list(
+        Booking.objects
+        .filter(status=Booking.STATUS_ACTIVE)
+        .select_related("slot")
+        .order_by("slot__date", "slot__start_time")
+    )
+
+
+@sync_to_async
+def _get_booking_by_id(pk: int):
+    return Booking.objects.select_related("slot").get(pk=pk)
+
+
 # ── Авторизация ────────────────────────────────────────────────────────────────
 
 def owner_only(func):
@@ -66,7 +108,6 @@ def owner_only(func):
 # ── Форматирование ─────────────────────────────────────────────────────────────
 
 def booking_card(b: Booking, compact: bool = False) -> str:
-    """Карточка одной записи."""
     d = b.get_display_date
     date_str = d.strftime("%d.%m.%Y") if d else "—"
     time_str = b.get_display_time or "—"
@@ -93,7 +134,6 @@ def booking_card(b: Booking, compact: bool = False) -> str:
 
 
 def day_digest(bookings: list, header: str, compact: bool = True) -> str:
-    """Список записей на один день."""
     if not bookings:
         return f"{header}\n\nЗаписей нет."
     lines = [header, ""]
@@ -105,10 +145,6 @@ def day_digest(bookings: list, header: str, compact: bool = True) -> str:
 
 
 def week_digest(bookings: list) -> list[str]:
-    """
-    Полные карточки на 7 дней, разбитые по дням.
-    Возвращает список сообщений (Telegram лимит 4096 символов).
-    """
     if not bookings:
         return ["На ближайшие 7 дней записей нет."]
 
@@ -120,7 +156,6 @@ def week_digest(bookings: list) -> list[str]:
     current = []
     total = sum(len(v) for v in by_date.values())
 
-    # Заголовок первого блока
     header_line = (
         f"📆 <b>Расписание на 7 дней</b>\n"
         f"<i>Записей: {total}</i>"
@@ -145,7 +180,6 @@ def week_digest(bookings: list) -> list[str]:
 
         block = "\n".join(day_lines)
 
-        # Если текущее сообщение переполнится — отправим как отдельное
         if len("\n".join(current)) + len(block) > 3800:
             messages.append("\n".join(current))
             current = [block]
@@ -161,8 +195,10 @@ def week_digest(bookings: list) -> list[str]:
 # ── Команды ────────────────────────────────────────────────────────────────────
 
 async def cmd_mychatid(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Возвращает chat_id отправителя — нужно для первичной настройки .env."""
-    await update.message.reply_text(f"Твой chat_id: <code>{update.effective_chat.id}</code>", parse_mode=ParseMode.HTML)
+    await update.message.reply_text(
+        f"Твой chat_id: <code>{update.effective_chat.id}</code>",
+        parse_mode=ParseMode.HTML,
+    )
 
 
 @owner_only
@@ -185,12 +221,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 @owner_only
 async def cmd_today(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     today = date.today()
-    bookings = list(
-        Booking.objects
-        .filter(status=Booking.STATUS_ACTIVE, slot__date=today)
-        .select_related("slot")
-        .order_by("slot__start_time")
-    )
+    bookings = await _get_bookings_for_date(today)
     text = day_digest(bookings, f"📅 <b>Сегодня — {DAY_RU[today.weekday()]}, {today.strftime('%d.%m.%Y')}</b>")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
@@ -198,41 +229,21 @@ async def cmd_today(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 @owner_only
 async def cmd_tomorrow(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tomorrow = date.today() + timedelta(days=1)
-    bookings = list(
-        Booking.objects
-        .filter(status=Booking.STATUS_ACTIVE, slot__date=tomorrow)
-        .select_related("slot")
-        .order_by("slot__start_time")
-    )
+    bookings = await _get_bookings_for_date(tomorrow)
     text = day_digest(bookings, f"📅 <b>Завтра — {DAY_RU[tomorrow.weekday()]}, {tomorrow.strftime('%d.%m.%Y')}</b>")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 @owner_only
 async def cmd_week(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    today = date.today()
-    bookings = list(
-        Booking.objects
-        .filter(
-            status=Booking.STATUS_ACTIVE,
-            slot__date__gte=today,
-            slot__date__lt=today + timedelta(days=7),
-        )
-        .select_related("slot")
-        .order_by("slot__date", "slot__start_time")
-    )
+    bookings = await _get_bookings_week(date.today())
     for msg in week_digest(bookings):
         await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
 
 @owner_only
 async def cmd_bookings(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    bookings = list(
-        Booking.objects
-        .filter(status=Booking.STATUS_ACTIVE)
-        .select_related("slot")
-        .order_by("slot__date", "slot__start_time")
-    )
+    bookings = await _get_all_active_bookings()
     if not bookings:
         await update.message.reply_text("Активных записей нет.")
         return
@@ -256,7 +267,7 @@ async def cmd_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Укажи номер записи: /id 42")
         return
     try:
-        b = Booking.objects.select_related("slot").get(pk=int(ctx.args[0]))
+        b = await _get_booking_by_id(int(ctx.args[0]))
         await update.message.reply_text(booking_card(b, compact=False), parse_mode=ParseMode.HTML)
     except (ValueError, Booking.DoesNotExist):
         await update.message.reply_text("Запись не найдена.")
@@ -265,14 +276,8 @@ async def cmd_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ── Scheduled jobs ─────────────────────────────────────────────────────────────
 
 async def job_morning(ctx: ContextTypes.DEFAULT_TYPE):
-    """07:00 — сводка на сегодня."""
     today = date.today()
-    bookings = list(
-        Booking.objects
-        .filter(status=Booking.STATUS_ACTIVE, slot__date=today)
-        .select_related("slot")
-        .order_by("slot__start_time")
-    )
+    bookings = await _get_bookings_for_date(today)
     text = day_digest(
         bookings,
         f"☀️ <b>Доброе утро, Иван!</b>\n"
@@ -282,14 +287,8 @@ async def job_morning(ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def job_tomorrow_reminder(ctx: ContextTypes.DEFAULT_TYPE):
-    """19:00 — напоминание о записях на завтра."""
     tomorrow = date.today() + timedelta(days=1)
-    bookings = list(
-        Booking.objects
-        .filter(status=Booking.STATUS_ACTIVE, slot__date=tomorrow)
-        .select_related("slot")
-        .order_by("slot__start_time")
-    )
+    bookings = await _get_bookings_for_date(tomorrow)
     if not bookings:
         return
     text = day_digest(
@@ -299,7 +298,7 @@ async def job_tomorrow_reminder(ctx: ContextTypes.DEFAULT_TYPE):
     await ctx.bot.send_message(chat_id=CHAT, text=text, parse_mode=ParseMode.HTML)
 
 
-# ── Меню команд бота (отображается в кнопке «/» в Telegram) ──────────────────
+# ── Меню команд бота ──────────────────────────────────────────────────────────
 
 async def set_bot_commands(app: Application):
     await app.bot.set_my_commands([
@@ -311,7 +310,7 @@ async def set_bot_commands(app: Application):
     ])
 
 
-# ── Запуск ──────────────────────────────────────────────────────────────────────
+# ── Запуск ────────────────────────────────────────────────────────────────────
 
 def main():
     if not TOKEN:
