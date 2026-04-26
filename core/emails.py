@@ -220,7 +220,6 @@ def _send_telegram_notification(booking, action: str) -> None:
     lines += ["", f"<a href=\"https://ivan-gunichev.ru/dashboard/\">🔗 Открыть кабинет</a>"]
     text = "\n".join(lines)
 
-    phone_url    = "".join(c for c in info["phone"] if c in "+0123456789")
     reply_markup = None
     if action in ("created", "rescheduled"):
         reply_markup = json.dumps({
@@ -228,9 +227,6 @@ def _send_telegram_notification(booking, action: str) -> None:
                 [
                     {"text": "✅ Принято",        "callback_data": f"ack:{booking.pk}"},
                     {"text": "❌ Отменить запись", "callback_data": f"cancel:{booking.pk}"},
-                ],
-                [
-                    {"text": f"📞 Позвонить {info['phone']}", "url": f"tel:{phone_url}"},
                 ],
             ]
         })
