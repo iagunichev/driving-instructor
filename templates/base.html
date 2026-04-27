@@ -8,16 +8,22 @@
   <title>{% block title %}Инструктор по вождению Иван Гуничев — верну уверенность и спокойствие за рулём{% endblock %}</title>
   <meta name="description" content="{% block description %}Гуничев Иван Алексеевич — инструктор по вождению в Ижевске с 18-летним опытом. Помогу преодолеть страх вождения, восстановить навыки. Занятия на вашей машине. Запись онлайн.{% endblock %}">
   <meta name="keywords" content="инструктор по вождению Ижевск, Гуничев Иван, Гуничев Иван Алексеевич, лучший инструктор по вождению Ижевск, автоинструктор Ижевск, обучение вождению Ижевск, уроки вождения Ижевск, спокойный инструктор, страх вождения, обучение вождению для женщин, восстановление навыков вождения, парковка для начинающих, антистресс вождение, инструктор без криков, автоинструктор, уроки вождения, вождение для начинающих, неуверенный водитель, инструктор после автошколы, занятия на своем авто, обучение парковке, вождение по городу, уверенность за рулем, расслабленное вождение, вождение без стресса, инструктор с большим стажем, маневрирование, задний ход, ночные покатушки, мама за рулем, антистресс вождение, свобода за рулем, Удмуртия, Удмуртская Республика">
+  <meta name="author" content="Иван Алексеевич Гуничев">
 
   <link rel="canonical" href="{% block canonical %}https://ivan-gunichev.ru{% endblock %}">
   <meta name="robots" content="index, follow">
 
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://ivan-gunichev.ru">
-  <meta property="og:title" content="Инструктор по вождению Иван Гуничев — Ижевск">
-  <meta property="og:description" content="Обучение вождению в Ижевске. Помогу преодолеть страх вождения. Занятия на вашей машине, без стресса и давления.">
+  <meta property="og:url" content="{% block og_url %}https://ivan-gunichev.ru{% endblock %}">
+  <meta property="og:title" content="{% block og_title %}Инструктор по вождению Иван Гуничев — Ижевск{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Обучение вождению в Ижевске. Помогу преодолеть страх вождения. Занятия на вашей машине, без стресса и давления.{% endblock %}">
   <meta property="og:image" content="https://ivan-gunichev.ru{% static 'images/og-image.jpg' %}">
   <meta property="og:locale" content="ru_RU">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{% block twitter_title %}Инструктор по вождению Иван Гуничев — Ижевск{% endblock %}">
+  <meta name="twitter:description" content="{% block twitter_description %}Обучение вождению в Ижевске. Помогу преодолеть страх вождения. Занятия на вашей машине.{% endblock %}">
+  <meta name="twitter:image" content="https://ivan-gunichev.ru{% static 'images/og-image.jpg' %}">
 
   <!-- Гео-теги для локального SEO -->
   <meta name="geo.region" content="RU-UD">
@@ -30,8 +36,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <link rel="shortcut icon" href="/favicon.ico">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="icon" type="image/svg+xml" href="{% static 'images/favicon.svg' %}">
-  <link rel="icon" type="image/x-icon"  href="{% static 'favicon.ico' %}">
 
   {% block extra_head %}{% endblock %}
 </head>
@@ -115,12 +122,6 @@
       </div>
     </div>
 
-    <!-- Скрытые SEO-ключевые слова (локальное продвижение Ижевск) -->
-    <div class="visually-hidden">
-      <p>Инструктор по вождению в Ижевске для неуверенных водителей. Обучение вождению с нуля в Ижевске, Удмуртия. Автоинструктор Ижевск — занятия на вашей машине, снятие страха вождения, восстановление навыков, спокойный инструктор без криков, парковка для начинающих, вождение для женщин, антистресс-вождение.</p>
-      <p>автоинструктор Ижевск, инструктор по вождению Ижевск, уроки вождения Ижевск, обучение вождению Ижевск, вождение для начинающих Ижевск, страх вождения, преодолеть страх, неуверенный водитель, восстановление навыков, инструктор после автошколы, спокойный инструктор, инструктор без криков, инструктор для женщин, занятия на своем авто, обучение парковке, как парковаться, отработка маршрута, вождение по городу Ижевск, уверенность за рулем, расслабленное вождение, вождение без стресса, кайф от вождения, инструктор с большим стажем, маневрирование, задний ход, ночные покатушки, вождение ночью, мама за рулем, антистресс вождение, свобода за рулем, спокойствие на дороге, мягкий инструктор, терпеливый инструктор, понимающий инструктор, безопасное вождение, добрый инструктор</p>
-    </div>
-
     <!-- Служебный доступ (намеренно незаметный) -->
     <div class="footer-service">
       {% if user.is_authenticated %}
@@ -156,18 +157,68 @@
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "LocalBusiness",
-    "name": "Иван Гуничев | Инструктор по вождению",
-    "description": "Помогаю преодолеть страх вождения, восстановить навыки и получать удовольствие от дороги. Занятия на вашем авто. 18 лет опыта, более 130 учеников.",
-    "image": "https://ivan-gunichev.ru{% static 'images/og-image.jpg' %}",
-    "telephone": "+79055609696",
-    "email": "gialekseevich@yandex.ru",
-    "url": "https://ivan-gunichev.ru",
-    "priceRange": "3000-4500₽",
-    "address": {"@type": "PostalAddress", "addressLocality": "Ижевск", "addressRegion": "Удмуртская Республика", "addressCountry": "RU"},
-    "openingHours": "Mo-Su 06:00-21:00",
-    "sameAs": ["https://t.me/+79055609696"],
-    "aggregateRating": {"@type": "AggregateRating", "ratingValue": "5.0", "reviewCount": "130"}
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://ivan-gunichev.ru/#website",
+        "url": "https://ivan-gunichev.ru",
+        "name": "Иван Гуничев — Инструктор по вождению в Ижевске",
+        "description": "Обучение вождению для неуверенных водителей в Ижевске. Занятия на вашей машине.",
+        "inLanguage": "ru",
+        "publisher": {"@id": "https://ivan-gunichev.ru/#person"}
+      },
+      {
+        "@type": "LocalBusiness",
+        "@id": "https://ivan-gunichev.ru/#business",
+        "name": "Иван Гуничев — Инструктор по вождению",
+        "description": "Обучение вождению в Ижевске для неуверенных водителей. Помогаю преодолеть страх вождения, восстановить навыки и ездить с удовольствием. Занятия на вашем авто. 18 лет опыта, более 130 учеников.",
+        "image": "https://ivan-gunichev.ru{% static 'images/og-image.jpg' %}",
+        "telephone": "+79055609696",
+        "email": "gialekseevich@yandex.ru",
+        "url": "https://ivan-gunichev.ru",
+        "priceRange": "3000–4500₽",
+        "address": {
+          "@type": "PostalAddress",
+          "addressLocality": "Ижевск",
+          "addressRegion": "Удмуртская Республика",
+          "postalCode": "426000",
+          "addressCountry": "RU"
+        },
+        "areaServed": {"@type": "City", "name": "Ижевск"},
+        "openingHours": "Mo-Su 06:00-21:00",
+        "sameAs": [
+          "https://t.me/+79055609696",
+          "https://vk.com/gialekseevich",
+          "https://www.avito.ru/user/1dda49dea72d6a391d02abe92f1ec573/profile"
+        ],
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": "5.0",
+          "reviewCount": 130,
+          "bestRating": "5",
+          "worstRating": "1"
+        },
+        "employee": {"@id": "https://ivan-gunichev.ru/#person"}
+      },
+      {
+        "@type": "Person",
+        "@id": "https://ivan-gunichev.ru/#person",
+        "name": "Иван Алексеевич Гуничев",
+        "givenName": "Иван",
+        "familyName": "Гуничев",
+        "jobTitle": "Инструктор по вождению",
+        "worksFor": {"@id": "https://ivan-gunichev.ru/#business"},
+        "url": "https://ivan-gunichev.ru",
+        "telephone": "+79055609696",
+        "email": "gialekseevich@yandex.ru",
+        "knowsAbout": ["Обучение вождению", "Страх вождения", "Автошкола", "Вождение для начинающих"],
+        "sameAs": [
+          "https://vk.com/gialekseevich",
+          "https://t.me/+79055609696",
+          "https://www.avito.ru/user/1dda49dea72d6a391d02abe92f1ec573/profile"
+        ]
+      }
+    ]
   }
   </script>
 
