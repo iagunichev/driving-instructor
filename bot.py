@@ -5,6 +5,8 @@ Telegram-бот для Ивана Гуничева — инструктора п
 Авто-уведомления:
   07:00 — сводка на сегодня
   19:00 — напоминание на завтра
+  12:00 — follow-up: написать клиенту вчерашнего урока
+  12:00 — follow-up: написать клиенту урока 3 дня назад
   каждые 5 мин — напоминание за час до урока
 
 Команды:
@@ -171,6 +173,20 @@ def _get_upcoming_in_window(low: time, high: time) -> list:
     )
 
 
+@sync_to_async
+def _get_bookings_for_past_date(d: date) -> list:
+    """Занятия в дату d — активные и завершённые (исключая отменённые)."""
+    return list(
+        Booking.objects
+        .filter(
+            status__in=[Booking.STATUS_ACTIVE, Booking.STATUS_COMPLETED],
+            slot_date=d,
+        )
+        .select_related("slot")
+        .order_by("slot__start_time")
+    )
+
+
 # ── Авторизация ────────────────────────────────────────────────────────────────
 
 def owner_only(func):
@@ -282,7 +298,8 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "<b>Аналитика:</b>\n"
         "/stats              — статистика уроков\n"
         "/find 9991234567 — поиск клиента\n\n"
-        "<i>Авто: 07:00 — сводка, 19:00 — завтра, за час — напоминание</i>",
+        "<i>Авто: 07:00 — сводка, 19:00 — завтра, за час — напоминание\n"
+        "12:00 — follow-up вчерашним и 3-дневным клиентам</i>",
         parse_mode=ParseMode.HTML,
     )
 
@@ -494,6 +511,44 @@ async def job_check_reminders(ctx: ContextTypes.DEFAULT_TYPE):
         await ctx.bot.send_message(chat_id=CHAT, text=text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
 
 
+async def job_followup_day1(ctx: ContextTypes.DEFAULT_TYPE):
+    """12:00 — напоминание об уроке вчерашнего дня: можно спросить как дела."""
+    yesterday = date.today() - timedelta(days=1)
+    bookings  = await _get_bookings_for_past_date(yesterday)
+    if not bookings:
+        return
+    lines = [
+        f"💬 <b>Вчера прошли занятия — стоит написать клиентам!</b>\n"
+        f"<i>({yesterday.strftime('%d.%m.%Y')}, {DAY_RU[yesterday.weekday()]})</i>\n"
+    ]
+    for b in bookings:
+        lines.append(
+            f"👤 <b>{b.name}</b>  📞 <code>{b.phone}</code>"
+            f"  ⏰ {b.get_display_time or '—'}\n"
+            f"   → Поинтересуйся, как прошло занятие 😊"
+        )
+    await ctx.bot.send_message(chat_id=CHAT, text="\n".join(lines), parse_mode=ParseMode.HTML)
+
+
+async def job_followup_day3(ctx: ContextTypes.DEFAULT_TYPE):
+    """12:00 — напоминание об уроке 3 дня назад: самое время узнать об успехах."""
+    three_days_ago = date.today() - timedelta(days=3)
+    bookings       = await _get_bookings_for_past_date(three_days_ago)
+    if not bookings:
+        return
+    lines = [
+        f"🔔 <b>3 дня назад были занятия — можно узнать об успехах!</b>\n"
+        f"<i>({three_days_ago.strftime('%d.%m.%Y')}, {DAY_RU[three_days_ago.weekday()]})</i>\n"
+    ]
+    for b in bookings:
+        lines.append(
+            f"👤 <b>{b.name}</b>  📞 <code>{b.phone}</code>"
+            f"  ⏰ {b.get_display_time or '—'}\n"
+            f"   → Как дела с вождением? Закрепился ли материал? 🚗"
+        )
+    await ctx.bot.send_message(chat_id=CHAT, text="\n".join(lines), parse_mode=ParseMode.HTML)
+
+
 # ── Меню команд ───────────────────────────────────────────────────────────────
 
 async def set_bot_commands(app: Application):
@@ -543,6 +598,8 @@ def main():
     jq = app.job_queue
     jq.run_daily(job_morning,           time=time(7,  0, tzinfo=TZ))
     jq.run_daily(job_tomorrow_reminder, time=time(19, 0, tzinfo=TZ))
+    jq.run_daily(job_followup_day1,     time=time(12, 0, tzinfo=TZ))
+    jq.run_daily(job_followup_day3,     time=time(12, 0, tzinfo=TZ))
     jq.run_repeating(job_check_reminders, interval=300, first=10)
 
     logger.info("Бот запущен")
